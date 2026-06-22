@@ -41,6 +41,14 @@ namespace FxFixGateway.Application.Services
         /// </summary>
         public Task OnSessionLoggedOnAsync(string sessionKey)
         {
+
+            if (sessionKey == "FXOHUB_UAT_NEW")
+            {
+                _logger.LogInformation("[{Session}] FXOHUB probe — sending MarketDataRequest (35=V)", sessionKey);
+                _subscriber.SendMarketDataRequestProbe(sessionKey, new[] { "EUR/USD" });
+                return Task.CompletedTask;
+            }
+
             if (!MarketDataSessions.Contains(sessionKey))
                 return Task.CompletedTask;
 
