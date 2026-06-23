@@ -143,7 +143,11 @@ namespace FxFixGateway.Infrastructure.QuickFix
                 foreach (var symbol in symbolList)
                 {
                     var symGroup = new QF.Group(146, 55);
-                    symGroup.SetField(new QF.Fields.Symbol(symbol)); // 55 = Symbol, t.ex. "EUR/USD"
+                    symGroup.SetField(new QF.Fields.Symbol(symbol));              // 55
+                    symGroup.SetField(new QF.Fields.SecurityType("FOR"));          // 167 - Foreign Exchange Contract
+                    symGroup.SetField(new QF.Fields.SecurityExchange("1000NYK"));  // 207 - NY cut 10:00
+                    symGroup.SetField(new QF.Fields.StringField(6215, "ALL"));            // TenorValue - alla tenorer
+                    symGroup.SetField(new QF.Fields.StringField(9126, "2"));              // OptionStrategy - Straddle ATM
                     msg.AddGroup(symGroup);
                 }
 
