@@ -959,31 +959,44 @@ namespace FxFixGateway.Infrastructure.QuickFix
             var result = new List<TpicapIncrementalEntryDto>();
             var noMdEntries = TryGetIntField(message, 268) ?? 0;
 
+            // TPICAP lägger dessa instrument-taggar i meddelandekroppen, inte i varje grupp.
+            var bodyTenorValue = TryGetField(message, 6215);
+            var bodyOptionStrategy = TryGetField(message, 9126);
+
             for (int i = 1; i <= noMdEntries; i++)
             {
                 try
                 {
-                    // 35=X: delimiter är 279 (MDUpdateAction) i TPICAP
                     var entryGroup = new QF.Group(268, 279);
                     message.GetGroup(i, entryGroup);
 
                     var symbol = TryGetField(entryGroup, 55);
                     var securityType = TryGetField(entryGroup, 167);
                     var securityExchange = TryGetField(entryGroup, 207);
-                    var tenorValue = TryGetField(entryGroup, 6215);
-                    var optionStrategy = TryGetField(entryGroup, 9126);
-                    var securityId = BuildTpicapSecurityId(symbol, securityType, securityExchange, tenorValue, optionStrategy);
 
+                    // 6215 och 9126 finns i meddelandekroppen i TPICAP 35=X, inte i gruppen.
+                    // Prova gruppen först (framtidssäkert), fall back på kroppen.
+                    var tenorValue = TryGetField(entryGroup, 6215) ?? bodyTenorValue;
+                    var optionStrategy = TryGetField(entryGroup, 9126) ?? bodyOptionStrategy;
+
+                    var securityId = BuildTpicapSecurityId(
+                        symbol, securityType, securityExchange, tenorValue, optionStrategy);
+
+                    // 270/271 ligger också i meddelandekroppen för TPICAP 35=X.
                     decimal? price = null;
-                    if (entryGroup.IsSetField(270) &&
-                        decimal.TryParse(entryGroup.GetString(270),
+                    var priceStr = entryGroup.IsSetField(270) ? entryGroup.GetString(270)
+                                 : (message.IsSetField(270) ? message.GetString(270) : null);
+                    if (priceStr != null &&
+                        decimal.TryParse(priceStr,
                             System.Globalization.NumberStyles.Any,
                             System.Globalization.CultureInfo.InvariantCulture, out var p))
                         price = p;
 
                     decimal? size = null;
-                    if (entryGroup.IsSetField(271) &&
-                        decimal.TryParse(entryGroup.GetString(271),
+                    var sizeStr = entryGroup.IsSetField(271) ? entryGroup.GetString(271)
+                                : (message.IsSetField(271) ? message.GetString(271) : null);
+                    if (sizeStr != null &&
+                        decimal.TryParse(sizeStr,
                             System.Globalization.NumberStyles.Any,
                             System.Globalization.CultureInfo.InvariantCulture, out var s))
                         size = s;
