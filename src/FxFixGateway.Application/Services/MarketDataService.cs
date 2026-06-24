@@ -12,6 +12,7 @@ namespace FxFixGateway.Application.Services
         private readonly IMarketDataSnapshotRepository _snapshotRepo;
         private readonly IMarketInstrumentRepository _instrumentRepo;
         private readonly ITpicapInstrumentRepository _tpicapRepo;
+        private readonly ICanonicalMarketBookRepository _canonicalRepo;
         private readonly ILogger<MarketDataService> _logger;
 
         private readonly Channel<(string SessionKey, MarketDataSnapshotDto Dto)> _channel;
@@ -40,12 +41,14 @@ namespace FxFixGateway.Application.Services
             IMarketDataSnapshotRepository snapshotRepo,
             IMarketInstrumentRepository instrumentRepo,
             ITpicapInstrumentRepository tpicapRepo,
+            ICanonicalMarketBookRepository canonicalRepo,
             ILogger<MarketDataService> logger,
             int channelCapacity = 1000)
         {
             _snapshotRepo = snapshotRepo ?? throw new ArgumentNullException(nameof(snapshotRepo));
             _instrumentRepo = instrumentRepo ?? throw new ArgumentNullException(nameof(instrumentRepo));
             _tpicapRepo = tpicapRepo ?? throw new ArgumentNullException(nameof(tpicapRepo));
+            _canonicalRepo = canonicalRepo ?? throw new ArgumentNullException(nameof(canonicalRepo));
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
 
             _channel = Channel.CreateBounded<(string, MarketDataSnapshotDto)>(
@@ -133,14 +136,44 @@ namespace FxFixGateway.Application.Services
             }
 
             foreach (var secId in deleteSecurityIds)
+            {
                 await _snapshotRepo.DeleteBookEntriesAsync(sessionKey, secId);
+                await _canonicalRepo.DeactivateEntriesAsync("TPICAP", sessionKey, secId);
+            }
 
             if (upsert.Count > 0)
                 await _snapshotRepo.UpsertBookEntriesAsync(upsert);
 
+            // Canonical: bara entries med full kanonisk identitet (DTO bär den).
+            var canonical = entries
+                .Where(e => e.MdUpdateAction != "2"
+                         && e.PositionNo.HasValue && !string.IsNullOrEmpty(e.MdEntryType)
+                         && e.CurrencyPair != null && e.Tenor != null
+                         && e.Cut != null && e.Strategy != null)
+                .Select(e => new CanonicalBookEntry
+                {
+                    Venue = "TPICAP",
+                    SessionKey = sessionKey,
+                    SecurityId = e.SecurityId,
+                    CurrencyPair = e.CurrencyPair!,
+                    Tenor = e.Tenor!,
+                    Cut = e.Cut!,
+                    Strategy = e.Strategy!,
+                    MdEntryType = e.MdEntryType!,
+                    PositionNo = e.PositionNo!.Value,
+                    Price = e.Price,
+                    Size = e.Size,
+                    Originator = e.Originator,
+                    IsActive = true,
+                    UpdatedUtc = now
+                })
+                .ToList();
+            if (canonical.Count > 0)
+                await _canonicalRepo.UpsertEntriesAsync(canonical);
+
             _logger.LogDebug(
-                "[{Session}] 35=X processed: {UpsertCount} upsert, {DeleteCount} delete",
-                sessionKey, upsert.Count, deleteSecurityIds.Count);
+                "[{Session}] 35=X processed: {UpsertCount} upsert, {DeleteCount} delete, {CanonCount} canonical",
+                sessionKey, upsert.Count, deleteSecurityIds.Count, canonical.Count);
         }
 
         private async Task ConsumeAsync(CancellationToken ct)
@@ -224,6 +257,9 @@ namespace FxFixGateway.Application.Services
                     sessionKey, dto.SecurityId);
                 await _snapshotRepo.InsertSnapshotAsync(snapshot, Array.Empty<MarketTrade>());
                 await _snapshotRepo.DeleteBookEntriesAsync(sessionKey, dto.SecurityId!);
+
+                var venue0 = TpicapSessions.Contains(sessionKey) ? "TPICAP" : "VOLBROKER";
+                await _canonicalRepo.DeactivateEntriesAsync(venue0, sessionKey, dto.SecurityId!);
                 return;
             }
 
@@ -237,6 +273,51 @@ namespace FxFixGateway.Application.Services
             var bookEntries = BuildBookEntries(snapshot, snapshotId);
             if (bookEntries.Count > 0)
                 await _snapshotRepo.UpsertBookEntriesAsync(bookEntries);
+
+            // Canonical merge-lager. Volbroker: råstrategi → display-namn.
+            // TPICAP: snapshot.Strategy är redan kanonisk.
+            var venue = TpicapSessions.Contains(sessionKey) ? "TPICAP" : "VOLBROKER";
+            var canonicalStrategy = TpicapSessions.Contains(sessionKey)
+                ? snapshot.Strategy
+                : ToStrategyDisplayName(snapshot.Strategy);
+
+            var canonical = BuildCanonicalEntries(
+                venue, sessionKey, dto.SecurityId!,
+                currencyPair, tenor, cut, canonicalStrategy, snapshot.Entries);
+            if (canonical.Count > 0)
+                await _canonicalRepo.UpsertEntriesAsync(canonical);
+        }
+
+        private static List<CanonicalBookEntry> BuildCanonicalEntries(
+    string venue, string sessionKey, string securityId,
+    string? currencyPair, string? tenor, string? cut, string? strategy,
+    IEnumerable<MarketDataEntry> entries)
+        {
+            // Kräver att alla kanoniska dimensioner finns — annars går raden inte att merga.
+            if (currencyPair == null || tenor == null || cut == null || strategy == null)
+                return new List<CanonicalBookEntry>();
+
+            var now = DateTime.UtcNow;
+            return entries
+                .Where(e => e.PositionNo.HasValue && e.MdEntryType != "2")
+                .Select(e => new CanonicalBookEntry
+                {
+                    Venue = venue,
+                    SessionKey = sessionKey,
+                    SecurityId = securityId,
+                    CurrencyPair = currencyPair,
+                    Tenor = tenor,
+                    Cut = cut,
+                    Strategy = strategy,
+                    MdEntryType = e.MdEntryType,
+                    PositionNo = e.PositionNo!.Value,
+                    Price = e.Price,
+                    Size = e.Size,
+                    Originator = e.Originator,
+                    IsActive = true,
+                    UpdatedUtc = now
+                })
+                .ToList();
         }
 
         private static string? TpicapCutToCanonical(string? securityExchange) => securityExchange switch

@@ -230,6 +230,9 @@ namespace FxFixGateway.UI
             services.AddSingleton<ITpicapInstrumentRepository>(sp =>
                 new TpicapInstrumentRepository(fxvolConnectionString));
 
+            services.AddSingleton<ICanonicalMarketBookRepository>(sp =>
+                new CanonicalMarketBookRepository(fxvolConnectionString));  // fxvol
+
             services.AddSingleton<IMarketDataSnapshotRepository>(sp =>
                 new MarketDataSnapshotRepository(fxvolConnectionString));  // fxvol
 
@@ -238,8 +241,9 @@ namespace FxFixGateway.UI
                 var snapshotRepo = sp.GetRequiredService<IMarketDataSnapshotRepository>();
                 var instrRepo = sp.GetRequiredService<IMarketInstrumentRepository>();
                 var tpicapRepo = sp.GetRequiredService<ITpicapInstrumentRepository>();
+                var canonicalRepo = sp.GetRequiredService<ICanonicalMarketBookRepository>();
                 var logger = sp.GetRequiredService<ILogger<MarketDataService>>();
-                return new MarketDataService(snapshotRepo, instrRepo, tpicapRepo, logger);
+                return new MarketDataService(snapshotRepo, instrRepo, tpicapRepo, canonicalRepo, logger);
             });
 
             // Market Data — orchestration
