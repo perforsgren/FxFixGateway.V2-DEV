@@ -359,22 +359,6 @@ namespace FxFixGateway.UI
         }
 
         /// <summary>
-        /// Augments a MySQL connection string with pool settings suited for a
-        /// high-frequency WPF + FIX-engine workload running in Release mode.
-        /// </summary>
-        private static string AugmentPoolSettings(string connectionString)
-        {
-            var builder = new MySql.Data.MySqlClient.MySqlConnectionStringBuilder(connectionString)
-            {
-                MinimumPoolSize    = 5,
-                MaximumPoolSize    = 200,
-                ConnectionTimeout  = 30,
-                DefaultCommandTimeout = 30
-            };
-            return builder.ConnectionString;
-        }
-
-        /// <summary>
         /// Sets connection pool size based on database role and expected concurrent load.
         /// ConnectionLifeTime ensures idle connections are recycled, allowing pool to shrink under low load.
         /// </summary>
