@@ -299,10 +299,9 @@ namespace FxFixGateway.Infrastructure.QuickFix
             var sessionKey = GetSessionKey(sessionId);
             if (sessionKey == null) return;
 
-            var msgType    = GetMessageType(message);
+            var msgType = GetMessageType(message);
             var rawMessage = message.ToString();
 
-            // Fire event for UI (MessageLog tab)
             MessageReceived?.Invoke(this, new MessageReceivedEvent(
                 sessionKey,
                 msgType,
@@ -316,19 +315,17 @@ namespace FxFixGateway.Infrastructure.QuickFix
                     break;
 
                 case "y" when _securityListService != null:
-                {
-                    // Ett 35=y kan innehålla upp till 100 instrument (tag 146=NoRelatedSym).
-                    // Parsa alla grupper med dictionary här i Infrastructure.
-                    var instruments = ParseSecurityInstrumentDtos(message);
-                    if (instruments.Count > 0)
-                        _ = Task.Run(() => _securityListService.HandleSecurityListAsync(sessionKey, instruments));
-                    break;
-                }
+                    {
+                        var instruments = ParseSecurityInstrumentDtos(message);
+                        if (instruments.Count > 0)
+                            _ = Task.Run(() => _securityListService.HandleSecurityListAsync(sessionKey, instruments));
+                        break;
+                    }
 
                 case "W" when _marketDataService != null:
                     {
-                        var venue = GetVenueCode(sessionKey);
-                        var dto = venue == "TPICAP"
+                        var isTpicap = sessionKey.Equals("FXOHUB_UAT", StringComparison.OrdinalIgnoreCase);
+                        var dto = isTpicap
                             ? ParseTpicapSnapshotDto(message, rawMessage)
                             : ParseMarketDataSnapshotDto(message, rawMessage);
                         _ = Task.Run(() => _marketDataService.HandleMarketDataSnapshotAsync(sessionKey, dto));
@@ -337,7 +334,7 @@ namespace FxFixGateway.Infrastructure.QuickFix
 
                 case "X" when _marketDataService != null:
                     {
-                        if (GetVenueCode(sessionKey) == "TPICAP")
+                        if (sessionKey.Equals("FXOHUB_UAT", StringComparison.OrdinalIgnoreCase))
                         {
                             var entries = ParseTpicapIncrementalEntries(message, sessionKey);
                             if (entries.Count > 0)
@@ -552,7 +549,6 @@ namespace FxFixGateway.Infrastructure.QuickFix
                 "VOLB_STP_DEV" => "VOLBROKER",
                 "VOLB_STP_PROD" => "VOLBROKER",
                 "FENICS_STP_STAGE2" => "FENICS",
-                "FXOHUB_UAT" => "TPICAP",
                 _ => sessionKey
             };
         }
@@ -879,10 +875,6 @@ namespace FxFixGateway.Infrastructure.QuickFix
             _   => fixValue?.Trim()  // Behåll okänd kod för debugging
         };
 
-        /// <summary>
-        /// Bygger deterministisk security_id ur TPICAP:s composite instrument-identitet.
-        /// Samma kombination → samma sträng (krav för active_market_book upsert).
-        /// </summary>
         private static string BuildTpicapSecurityId(
             string? symbol, string? securityType, string? securityExchange,
             string? tenorValue, string? optionStrategy)
@@ -971,7 +963,7 @@ namespace FxFixGateway.Infrastructure.QuickFix
             {
                 try
                 {
-                    // 35=X: delimiter är 279 (MDUpdateAction) för TPICAP
+                    // 35=X: delimiter är 279 (MDUpdateAction) i TPICAP
                     var entryGroup = new QF.Group(268, 279);
                     message.GetGroup(i, entryGroup);
 
