@@ -336,7 +336,7 @@ namespace FxFixGateway.Infrastructure.QuickFix
                     {
                         if (sessionKey.Equals("FXOHUB_UAT", StringComparison.OrdinalIgnoreCase))
                         {
-                            var entries = ParseTpicapIncrementalEntries(message);
+                            var entries = ParseTpicapIncrementalEntries(message, sessionKey);
                             if (entries.Count > 0)
                                 _ = Task.Run(() => _marketDataService.HandleMarketDataIncrementalRefreshAsync(sessionKey, entries));
                         }
@@ -954,7 +954,7 @@ namespace FxFixGateway.Infrastructure.QuickFix
         }
 
         private IReadOnlyList<TpicapIncrementalEntryDto> ParseTpicapIncrementalEntries(
-            QF.Message message)
+            QF.Message message, string sessionKey)
         {
             var result = new List<TpicapIncrementalEntryDto>();
             var noMdEntries = TryGetIntField(message, 268) ?? 0;
