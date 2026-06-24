@@ -252,7 +252,7 @@ namespace FxFixGateway.Application.Services
             "2" => "Straddle",
             "4" => "Risk Reversal",
             "A" => "Straddle Calendar",
-            "B" => "FLY",
+            "B" => "Butterfly",
             _ => optionStrategy
         };
 
