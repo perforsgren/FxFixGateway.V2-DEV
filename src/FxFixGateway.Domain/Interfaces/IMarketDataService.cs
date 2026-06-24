@@ -3,14 +3,16 @@ using FxFixGateway.Domain.ValueObjects;
 namespace FxFixGateway.Domain.Interfaces
 {
     /// <summary>
-    /// Hanterar inkommande MarketDataSnapshot (35=W) frÂn Volbroker/TFSICAP.
-    /// Filtrerar pÂ prenumererade instrument och persisterar i fxvol.
+    /// Hanterar inkommande MarketDataSnapshot (35=W) fr√•n Volbroker/TFSICAP.
+    /// Filtrerar p√• prenumererade instrument och persisterar i fxvol.
     /// </summary>
     public interface IMarketDataService
     {
         /// <summary>
-        /// Anropas frÂn QuickFixApplication.FromApp n‰r MsgType=W tas emot.
+        /// Anropas fr√•n QuickFixApplication.FromApp n√§r MsgType=W tas emot.
         /// </summary>
         Task HandleMarketDataSnapshotAsync(string sessionKey, MarketDataSnapshotDto dto);
+
+        Task HandleMarketDataIncrementalRefreshAsync(string sessionKey, IReadOnlyList<TpicapIncrementalEntryDto> entries);
     }
 }

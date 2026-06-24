@@ -9,41 +9,48 @@ namespace FxFixGateway.Application.Services
 {
     public class MarketDataService : IMarketDataService, IAsyncDisposable
     {
-        private readonly IMarketDataSnapshotRepository              _snapshotRepo;
-        private readonly IMarketInstrumentRepository                _instrumentRepo;
-        private readonly ILogger<MarketDataService>                 _logger;
+        private readonly IMarketDataSnapshotRepository _snapshotRepo;
+        private readonly IMarketInstrumentRepository _instrumentRepo;
+        private readonly ITpicapInstrumentRepository _tpicapRepo;
+        private readonly ILogger<MarketDataService> _logger;
 
         private readonly Channel<(string SessionKey, MarketDataSnapshotDto Dto)> _channel;
-        private readonly Task                                                     _consumerTask;
-        private readonly CancellationTokenSource                                  _cts = new();
+        private readonly Task _consumerTask;
+        private readonly CancellationTokenSource _cts = new();
 
         // Cache: sessionKey → securityId → (CurrencyPair, Product, Tenor, Cut, Strategy, Delta)
         private readonly Dictionary<string, Dictionary<string, (string? CurrencyPair, int? Product, string? Tenor, string? Cut, string? Strategy, string? Delta)>> _instrumentCache = new();
         private readonly object _cacheLock = new();
 
-        // Subscription cache: eliminerar DB-träff för varje inkommande 35=W.
-        // Invalideras vid omstart. Acceptabelt beteende — subscriptions ändras sällan.
         private readonly ConcurrentDictionary<(string SessionKey, string SecurityId), bool> _subscriptionCache = new();
 
         private static readonly HashSet<string> MarketDataSessions = new(StringComparer.OrdinalIgnoreCase)
         {
-            "VOLB_FIXHUB_DEV"
+            "VOLB_FIXHUB_DEV",
+            "FXOHUB_UAT"
+        };
+
+        private static readonly HashSet<string> TpicapSessions = new(StringComparer.OrdinalIgnoreCase)
+        {
+            "FXOHUB_UAT"
         };
 
         public MarketDataService(
             IMarketDataSnapshotRepository snapshotRepo,
-            IMarketInstrumentRepository   instrumentRepo,
-            ILogger<MarketDataService>    logger,
+            IMarketInstrumentRepository instrumentRepo,
+            ITpicapInstrumentRepository tpicapRepo,
+            ILogger<MarketDataService> logger,
             int channelCapacity = 1000)
         {
-            _snapshotRepo   = snapshotRepo   ?? throw new ArgumentNullException(nameof(snapshotRepo));
+            _snapshotRepo = snapshotRepo ?? throw new ArgumentNullException(nameof(snapshotRepo));
             _instrumentRepo = instrumentRepo ?? throw new ArgumentNullException(nameof(instrumentRepo));
-            _logger         = logger         ?? throw new ArgumentNullException(nameof(logger));
+            _tpicapRepo = tpicapRepo ?? throw new ArgumentNullException(nameof(tpicapRepo));
+            _logger = logger ?? throw new ArgumentNullException(nameof(logger));
 
             _channel = Channel.CreateBounded<(string, MarketDataSnapshotDto)>(
                 new BoundedChannelOptions(channelCapacity)
                 {
-                    FullMode     = BoundedChannelFullMode.DropOldest,
+                    FullMode = BoundedChannelFullMode.DropOldest,
                     SingleReader = true,
                     SingleWriter = false
                 });
@@ -58,29 +65,27 @@ namespace FxFixGateway.Application.Services
 
             if (string.IsNullOrEmpty(dto.SecurityId))
             {
-                _logger.LogDebug("[{Session}] 35=W missing SecurityId (tag 48) — skipping", sessionKey);
+                _logger.LogDebug("[{Session}] 35=W missing SecurityId — skipping", sessionKey);
                 return;
             }
 
-            // Check subscription cache first — avoids a DB round-trip for every FIX message.
-            // Cache miss triggers one DB call per (session, security) pair, then is cached permanently.
-            var cacheKey = (sessionKey, dto.SecurityId);
-            if (!_subscriptionCache.TryGetValue(cacheKey, out var isSubscribed))
+            // TPICAP-sessioner har ingen prenumerationsgating — alla instrument processas
+            if (!TpicapSessions.Contains(sessionKey))
             {
-                isSubscribed = await _snapshotRepo.IsSubscribedAsync(sessionKey, dto.SecurityId);
-                _subscriptionCache.TryAdd(cacheKey, isSubscribed);
+                var cacheKey = (sessionKey, dto.SecurityId);
+                if (!_subscriptionCache.TryGetValue(cacheKey, out var isSubscribed))
+                {
+                    isSubscribed = await _snapshotRepo.IsSubscribedAsync(sessionKey, dto.SecurityId);
+                    _subscriptionCache.TryAdd(cacheKey, isSubscribed);
+                }
 
-                _logger.LogDebug(
-                    "[{Session}] Subscription cache miss for SecurityId={SecId} — subscribed={Result}",
-                    sessionKey, dto.SecurityId, isSubscribed);
-            }
-
-            if (!isSubscribed)
-            {
-                _logger.LogDebug(
-                    "[{Session}] 35=W SecurityId={SecId} not subscribed — skipping",
-                    sessionKey, dto.SecurityId);
-                return;
+                if (!isSubscribed)
+                {
+                    _logger.LogDebug(
+                        "[{Session}] 35=W SecurityId={SecId} not subscribed — skipping",
+                        sessionKey, dto.SecurityId);
+                    return;
+                }
             }
 
             if (!_channel.Writer.TryWrite((sessionKey, dto)))
@@ -91,18 +96,60 @@ namespace FxFixGateway.Application.Services
             }
         }
 
+        public async Task HandleMarketDataIncrementalRefreshAsync(
+            string sessionKey, IReadOnlyList<TpicapIncrementalEntryDto> entries)
+        {
+            if (entries.Count == 0) return;
+
+            var now = DateTime.UtcNow;
+            var upsert = new List<ActiveMarketBookEntry>();
+            var deleteSecurityIds = new HashSet<string>();
+
+            foreach (var e in entries)
+            {
+                if (e.MdUpdateAction == "2") // Delete
+                {
+                    deleteSecurityIds.Add(e.SecurityId);
+                    continue;
+                }
+
+                if (!e.PositionNo.HasValue || string.IsNullOrEmpty(e.MdEntryType))
+                    continue;
+
+                upsert.Add(new ActiveMarketBookEntry
+                {
+                    SecurityId = e.SecurityId,
+                    SessionKey = sessionKey,
+                    CurrencyPair = e.CurrencyPair,
+                    MdEntryType = e.MdEntryType,
+                    PositionNo = e.PositionNo.Value,
+                    Price = e.Price,
+                    Size = e.Size,
+                    Originator = e.Originator,
+                    SnapshotId = 0,
+                    UpdatedUtc = now
+                });
+            }
+
+            foreach (var secId in deleteSecurityIds)
+                await _snapshotRepo.DeleteBookEntriesAsync(sessionKey, secId);
+
+            if (upsert.Count > 0)
+                await _snapshotRepo.UpsertBookEntriesAsync(upsert);
+
+            _logger.LogDebug(
+                "[{Session}] 35=X processed: {UpsertCount} upsert, {DeleteCount} delete",
+                sessionKey, upsert.Count, deleteSecurityIds.Count);
+        }
+
         private async Task ConsumeAsync(CancellationToken ct)
         {
             await foreach (var (sessionKey, dto) in _channel.Reader.ReadAllAsync(ct))
             {
-                try
-                {
-                    await ProcessSnapshotAsync(sessionKey, dto);
-                }
+                try { await ProcessSnapshotAsync(sessionKey, dto); }
                 catch (Exception ex)
                 {
-                    _logger.LogError(ex,
-                        "[{Session}] Consumer failed for SecurityId={SecId}",
+                    _logger.LogError(ex, "[{Session}] Consumer failed for SecurityId={SecId}",
                         sessionKey, dto.SecurityId);
                 }
             }
@@ -110,24 +157,63 @@ namespace FxFixGateway.Application.Services
 
         private async Task ProcessSnapshotAsync(string sessionKey, MarketDataSnapshotDto dto)
         {
-            var (currencyPair, product, tenor, cut, strategy, delta) =
-                await GetInstrumentMetaAsync(sessionKey, dto.SecurityId);
+            string? currencyPair, cut, strategy, delta;
+            int? product;
+            string? tenor;
+
+            if (TpicapSessions.Contains(sessionKey))
+            {
+                // Upserta TPICAP-instrumentet och använd DTO-fälten som metadata
+                var tpicapInstrument = new TpicapInstrument
+                {
+                    SessionKey = sessionKey,
+                    SecurityId = dto.SecurityId!,
+                    Symbol = dto.Symbol,
+                    CurrencyPair = dto.Symbol?.Replace("/", ""),
+                    SecurityType = dto.SecurityType,
+                    SecurityExchange = dto.SecurityExchange,
+                    TenorValue = dto.TenorValue,
+                    OptionStrategy = dto.OptionStrategy,
+                    MaturityMonthYear = dto.MaturityMonthYear,
+                    PremiumType = dto.PremiumType,
+                    DeliveryType = dto.DeliveryType,
+                    DeltaBasis = dto.DeltaBasis,
+                    PremiumCcy = dto.PremiumCurrencyTag,
+                    Tenor = dto.TenorValue,
+                    Cut = TpicapCutToCanonical(dto.SecurityExchange),
+                    Strategy = TpicapStrategyToCanonical(dto.OptionStrategy),
+                    DiscoveredUtc = DateTime.UtcNow,
+                };
+                await _tpicapRepo.UpsertAsync(tpicapInstrument);
+
+                currencyPair = tpicapInstrument.CurrencyPair;
+                product = null;
+                tenor = tpicapInstrument.Tenor;
+                cut = tpicapInstrument.Cut;
+                strategy = tpicapInstrument.Strategy;
+                delta = null;
+            }
+            else
+            {
+                (currencyPair, product, tenor, cut, strategy, delta) =
+                    await GetInstrumentMetaAsync(sessionKey, dto.SecurityId!);
+            }
 
             var snapshot = new MarketDataSnapshot
             {
-                SessionKey   = sessionKey,
-                SecurityId   = dto.SecurityId,
-                MdReqId      = dto.MdReqId,
+                SessionKey = sessionKey,
+                SecurityId = dto.SecurityId!,
+                MdReqId = dto.MdReqId,
                 CurrencyPair = currencyPair,
-                Product      = product,
-                Tenor        = tenor,
-                Cut          = cut,
-                Strategy     = strategy,
-                Delta        = delta,
-                RawPayload   = dto.RawPayload,
-                ReceivedUtc  = DateTime.UtcNow,
-                Entries      = dto.Entries.Select(e => MapEntry(e, dto.SecurityId)).ToList(),
-                EntryCount   = dto.Entries.Count
+                Product = product,
+                Tenor = tenor,
+                Cut = cut,
+                Strategy = strategy,
+                Delta = delta,
+                RawPayload = dto.RawPayload,
+                ReceivedUtc = DateTime.UtcNow,
+                Entries = dto.Entries.Select(e => MapEntry(e, dto.SecurityId!)).ToList(),
+                EntryCount = dto.Entries.Count
             };
 
             if (dto.Entries.Count == 0)
@@ -135,44 +221,59 @@ namespace FxFixGateway.Application.Services
                 _logger.LogInformation(
                     "[{Session}] 35=W 268=0 for SecurityId={SecId} — clearing active_market_book",
                     sessionKey, dto.SecurityId);
-
                 await _snapshotRepo.InsertSnapshotAsync(snapshot, Array.Empty<MarketTrade>());
-                await _snapshotRepo.DeleteBookEntriesAsync(sessionKey, dto.SecurityId);
+                await _snapshotRepo.DeleteBookEntriesAsync(sessionKey, dto.SecurityId!);
                 return;
             }
 
-            var trades     = BuildTrades(snapshot, snapshotId: 0);
+            var trades = BuildTrades(snapshot, snapshotId: 0);
             var snapshotId = await _snapshotRepo.InsertSnapshotAsync(snapshot, trades);
 
             _logger.LogDebug(
-                "[{Session}] 35=W saved: SnapshotId={Id} SecurityId={SecId} Pair={Pair} Tenor={Tenor} Entries={Count} Trades={TradeCount}",
-                sessionKey, snapshotId, dto.SecurityId, currencyPair, tenor, snapshot.Entries.Count, trades.Count);
+                "[{Session}] 35=W saved: SnapshotId={Id} SecurityId={SecId} Pair={Pair} Tenor={Tenor} Entries={Count}",
+                sessionKey, snapshotId, dto.SecurityId, currencyPair, tenor, snapshot.Entries.Count);
 
             var bookEntries = BuildBookEntries(snapshot, snapshotId);
             if (bookEntries.Count > 0)
                 await _snapshotRepo.UpsertBookEntriesAsync(bookEntries);
         }
 
+        private static string? TpicapCutToCanonical(string? securityExchange) => securityExchange switch
+        {
+            "1000NYK" => "NY",
+            "1000LDN" => "LN",
+            "1500TKY" => "TK",
+            _ => securityExchange
+        };
+
+        private static string? TpicapStrategyToCanonical(string? optionStrategy) => optionStrategy switch
+        {
+            "2" => "Straddle",
+            "4" => "Risk Reversal",
+            "A" => "Straddle Calendar",
+            "B" => "FLY",
+            _ => optionStrategy
+        };
+
         private static List<ActiveMarketBookEntry> BuildBookEntries(MarketDataSnapshot snapshot, long snapshotId)
         {
             var now = DateTime.UtcNow;
-
             return snapshot.Entries
                 .Where(e => e.PositionNo.HasValue && e.MdEntryType != "2")
                 .Select(e => new ActiveMarketBookEntry
                 {
-                    SecurityId     = snapshot.SecurityId,
-                    SessionKey     = snapshot.SessionKey,
-                    CurrencyPair   = snapshot.CurrencyPair,
-                    MdEntryType    = e.MdEntryType,
-                    PositionNo     = e.PositionNo!.Value,
-                    Price          = e.Price,
-                    Size           = e.Size,
-                    Originator     = e.Originator,
-                    TraderId       = e.TraderId,
+                    SecurityId = snapshot.SecurityId,
+                    SessionKey = snapshot.SessionKey,
+                    CurrencyPair = snapshot.CurrencyPair,
+                    MdEntryType = e.MdEntryType,
+                    PositionNo = e.PositionNo!.Value,
+                    Price = e.Price,
+                    Size = e.Size,
+                    Originator = e.Originator,
+                    TraderId = e.TraderId,
                     QuoteCondition = e.QuoteCondition,
-                    SnapshotId     = snapshotId,
-                    UpdatedUtc     = now
+                    SnapshotId = snapshotId,
+                    UpdatedUtc = now
                 })
                 .ToList();
         }
@@ -180,27 +281,24 @@ namespace FxFixGateway.Application.Services
         private static List<MarketTrade> BuildTrades(MarketDataSnapshot snapshot, long snapshotId)
         {
             var now = DateTime.UtcNow;
-
             return snapshot.Entries
                 .Where(e => e.MdEntryType == "2")
                 .Select(e => new MarketTrade
                 {
-                    SecurityId     = snapshot.SecurityId,
-                    SessionKey     = snapshot.SessionKey,
-                    CurrencyPair   = snapshot.CurrencyPair,
-                    Tenor          = snapshot.Tenor,
-                    Cut            = snapshot.Cut,
-                    Strategy       = ToStrategyDisplayName(snapshot.Strategy),  // normalisera här
-                    Delta          = ToDeltaDisplayName(snapshot.Delta),        // normalisera här
-                    Price          = e.Price,
-                    Size           = e.Size,
-                    TradeDate      = e.EntryDate.HasValue
-                        ? DateOnly.FromDateTime(e.EntryDate.Value) : null,
-                    TradeTime      = e.EntryTime.HasValue
-                        ? TimeOnly.FromTimeSpan(e.EntryTime.Value) : null,
+                    SecurityId = snapshot.SecurityId,
+                    SessionKey = snapshot.SessionKey,
+                    CurrencyPair = snapshot.CurrencyPair,
+                    Tenor = snapshot.Tenor,
+                    Cut = snapshot.Cut,
+                    Strategy = ToStrategyDisplayName(snapshot.Strategy),
+                    Delta = ToDeltaDisplayName(snapshot.Delta),
+                    Price = e.Price,
+                    Size = e.Size,
+                    TradeDate = e.EntryDate.HasValue ? DateOnly.FromDateTime(e.EntryDate.Value) : null,
+                    TradeTime = e.EntryTime.HasValue ? TimeOnly.FromTimeSpan(e.EntryTime.Value) : null,
                     TradeCondition = e.TradeCondition,
-                    SnapshotId     = snapshotId,
-                    ReceivedUtc    = now
+                    SnapshotId = snapshotId,
+                    ReceivedUtc = now
                 })
                 .ToList();
         }
@@ -213,20 +311,18 @@ namespace FxFixGateway.Application.Services
             "4" => "Risk Reversal",
             "G" => "Butterfly",
             "S" => "Generic Spread",
-            _   => null
+            _ => null
         };
 
         private static string? ToDeltaDisplayName(string? fixValue)
         {
-            if (string.IsNullOrWhiteSpace(fixValue))
-                return null;
-
+            if (string.IsNullOrWhiteSpace(fixValue)) return null;
             var trimmed = fixValue.Trim();
             return trimmed == "0" ? "ATM" : trimmed;
         }
 
-        private async Task<(string? CurrencyPair, int? Product, string? Tenor, string? Cut, string? Strategy, string? Delta)> GetInstrumentMetaAsync(
-            string sessionKey, string securityId)
+        private async Task<(string? CurrencyPair, int? Product, string? Tenor, string? Cut, string? Strategy, string? Delta)>
+            GetInstrumentMetaAsync(string sessionKey, string securityId)
         {
             lock (_cacheLock)
             {
@@ -236,15 +332,14 @@ namespace FxFixGateway.Application.Services
             }
 
             var instrument = await _instrumentRepo.GetBySecurityIdAsync(sessionKey, securityId);
-            var meta       = (instrument?.CurrencyPair, instrument?.Product,
-                              instrument?.Tenor, instrument?.Cut,
-                              instrument?.Strategy, instrument?.Delta);
+            var meta = (instrument?.CurrencyPair, instrument?.Product,
+                        instrument?.Tenor, instrument?.Cut,
+                        instrument?.Strategy, instrument?.Delta);
 
             lock (_cacheLock)
             {
                 if (!_instrumentCache.ContainsKey(sessionKey))
                     _instrumentCache[sessionKey] = new();
-
                 _instrumentCache[sessionKey][securityId] = meta;
             }
 
@@ -266,19 +361,19 @@ namespace FxFixGateway.Application.Services
 
             return new MarketDataEntry
             {
-                SecurityId     = securityId,
-                MdEntryType    = dto.MdEntryType    ?? string.Empty,
-                Price          = dto.Price,
-                Size           = dto.Size,
+                SecurityId = securityId,
+                MdEntryType = dto.MdEntryType ?? string.Empty,
+                Price = dto.Price,
+                Size = dto.Size,
                 QuoteCondition = dto.QuoteCondition,
                 TradeCondition = dto.TradeCondition,
-                PositionNo     = dto.PositionNo,
-                Originator     = dto.Originator,
-                TraderId       = dto.TraderId,
-                ExecInst       = dto.ExecInst,
-                Scope          = dto.Scope,
-                EntryDate      = entryDate,
-                EntryTime      = entryTime
+                PositionNo = dto.PositionNo,
+                Originator = dto.Originator,
+                TraderId = dto.TraderId,
+                ExecInst = dto.ExecInst,
+                Scope = dto.Scope,
+                EntryDate = entryDate,
+                EntryTime = entryTime
             };
         }
 

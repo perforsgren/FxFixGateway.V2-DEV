@@ -1,4 +1,4 @@
-﻿using FxFixGateway.Domain.Enums;
+using FxFixGateway.Domain.Enums;
 using FxFixGateway.Domain.Events;
 using FxFixGateway.Domain.Interfaces;
 using FxFixGateway.Domain.ValueObjects;
@@ -327,8 +327,22 @@ namespace FxFixGateway.Infrastructure.QuickFix
 
                 case "W" when _marketDataService != null:
                     {
-                        var dto = ParseMarketDataSnapshotDto(message, rawMessage);
+                        var venue = GetVenueCode(sessionKey);
+                        var dto = venue == "TPICAP"
+                            ? ParseTpicapSnapshotDto(message, rawMessage)
+                            : ParseMarketDataSnapshotDto(message, rawMessage);
                         _ = Task.Run(() => _marketDataService.HandleMarketDataSnapshotAsync(sessionKey, dto));
+                        break;
+                    }
+
+                case "X" when _marketDataService != null:
+                    {
+                        if (GetVenueCode(sessionKey) == "TPICAP")
+                        {
+                            var entries = ParseTpicapIncrementalEntries(message, sessionKey);
+                            if (entries.Count > 0)
+                                _ = Task.Run(() => _marketDataService.HandleMarketDataIncrementalRefreshAsync(sessionKey, entries));
+                        }
                         break;
                     }
 
@@ -535,10 +549,11 @@ namespace FxFixGateway.Infrastructure.QuickFix
         {
             return sessionKey switch
             {
-                "VOLB_STP_DEV"     => "VOLBROKER",
-                "VOLB_STP_PROD"    => "VOLBROKER",
+                "VOLB_STP_DEV" => "VOLBROKER",
+                "VOLB_STP_PROD" => "VOLBROKER",
                 "FENICS_STP_STAGE2" => "FENICS",
-                _ => sessionKey // fallback to SessionKey
+                "FXOHUB_UAT" => "TPICAP",
+                _ => sessionKey
             };
         }
 
@@ -862,6 +877,165 @@ namespace FxFixGateway.Infrastructure.QuickFix
             "G" => "Butterfly",
             "S" => "Generic Spread",
             _   => fixValue?.Trim()  // Behåll okänd kod för debugging
+        };
+
+        /// <summary>
+        /// Bygger deterministisk security_id ur TPICAP:s composite instrument-identitet.
+        /// Samma kombination → samma sträng (krav för active_market_book upsert).
+        /// </summary>
+        private static string BuildTpicapSecurityId(
+            string? symbol, string? securityType, string? securityExchange,
+            string? tenorValue, string? optionStrategy)
+        {
+            var pair = symbol?.Replace("/", "") ?? "";
+            return $"{pair}|{securityType ?? ""}|{securityExchange ?? ""}|{tenorValue ?? ""}|{optionStrategy ?? ""}";
+        }
+
+        private MarketDataSnapshotDto ParseTpicapSnapshotDto(QF.Message message, string rawMessage)
+        {
+            var symbol = TryGetField(message, 55);
+            var securityType = TryGetField(message, 167);
+            var securityExchange = TryGetField(message, 207);
+            var tenorValue = TryGetField(message, 6215);
+            var optionStrategy = TryGetField(message, 9126);
+            var securityId = BuildTpicapSecurityId(symbol, securityType, securityExchange, tenorValue, optionStrategy);
+
+            var entries = new List<MarketDataEntryDto>();
+            var noMdEntries = TryGetIntField(message, 268) ?? 0;
+
+            for (int i = 1; i <= noMdEntries; i++)
+            {
+                try
+                {
+                    var entryGroup = new QF.Group(268, 269);
+                    message.GetGroup(i, entryGroup);
+
+                    decimal? price = null;
+                    if (entryGroup.IsSetField(270) &&
+                        decimal.TryParse(entryGroup.GetString(270),
+                            System.Globalization.NumberStyles.Any,
+                            System.Globalization.CultureInfo.InvariantCulture, out var p))
+                        price = p;
+
+                    decimal? size = null;
+                    if (entryGroup.IsSetField(271) &&
+                        decimal.TryParse(entryGroup.GetString(271),
+                            System.Globalization.NumberStyles.Any,
+                            System.Globalization.CultureInfo.InvariantCulture, out var s))
+                        size = s;
+
+                    entries.Add(new MarketDataEntryDto
+                    {
+                        MdEntryType = TryGetField(entryGroup, 269),
+                        Price = price,
+                        Size = size,
+                        QuoteCondition = TryGetField(entryGroup, 276),
+                        PositionNo = TryGetIntField(entryGroup, 290),
+                        Originator = TryGetField(entryGroup, 282),
+                    });
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine(
+                        $"[ParseTpicapSnapshotDto] failed to parse entry {i}: {ex.Message}");
+                }
+            }
+
+            return new MarketDataSnapshotDto
+            {
+                SecurityId = securityId,
+                MdReqId = TryGetField(message, 262),
+                RawPayload = rawMessage,
+                Entries = entries,
+                Venue = "TPICAP",
+                Symbol = symbol,
+                SecurityType = securityType,
+                SecurityExchange = securityExchange,
+                TenorValue = tenorValue,
+                OptionStrategy = optionStrategy,
+                MaturityMonthYear = TryGetField(message, 200),
+                PremiumType = TryGetField(message, 6010),
+                DeliveryType = TryGetField(message, 6011),
+                DeltaBasis = TryGetField(message, 9128),
+                PremiumCurrencyTag = TryGetField(message, 9129),
+            };
+        }
+
+        private IReadOnlyList<TpicapIncrementalEntryDto> ParseTpicapIncrementalEntries(
+            QF.Message message, string sessionKey)
+        {
+            var result = new List<TpicapIncrementalEntryDto>();
+            var noMdEntries = TryGetIntField(message, 268) ?? 0;
+
+            for (int i = 1; i <= noMdEntries; i++)
+            {
+                try
+                {
+                    // 35=X: delimiter är 279 (MDUpdateAction) för TPICAP
+                    var entryGroup = new QF.Group(268, 279);
+                    message.GetGroup(i, entryGroup);
+
+                    var symbol = TryGetField(entryGroup, 55);
+                    var securityType = TryGetField(entryGroup, 167);
+                    var securityExchange = TryGetField(entryGroup, 207);
+                    var tenorValue = TryGetField(entryGroup, 6215);
+                    var optionStrategy = TryGetField(entryGroup, 9126);
+                    var securityId = BuildTpicapSecurityId(symbol, securityType, securityExchange, tenorValue, optionStrategy);
+
+                    decimal? price = null;
+                    if (entryGroup.IsSetField(270) &&
+                        decimal.TryParse(entryGroup.GetString(270),
+                            System.Globalization.NumberStyles.Any,
+                            System.Globalization.CultureInfo.InvariantCulture, out var p))
+                        price = p;
+
+                    decimal? size = null;
+                    if (entryGroup.IsSetField(271) &&
+                        decimal.TryParse(entryGroup.GetString(271),
+                            System.Globalization.NumberStyles.Any,
+                            System.Globalization.CultureInfo.InvariantCulture, out var s))
+                        size = s;
+
+                    result.Add(new TpicapIncrementalEntryDto
+                    {
+                        SecurityId = securityId,
+                        CurrencyPair = symbol?.Replace("/", ""),
+                        Tenor = tenorValue,
+                        Cut = TpicapCutToCanonical(securityExchange),
+                        Strategy = TpicapStrategyToCanonical(optionStrategy),
+                        MdUpdateAction = TryGetField(entryGroup, 279) ?? "0",
+                        MdEntryType = TryGetField(entryGroup, 269),
+                        Price = price,
+                        Size = size,
+                        PositionNo = TryGetIntField(entryGroup, 290),
+                        Originator = TryGetField(entryGroup, 282),
+                    });
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine(
+                        $"[ParseTpicapIncrementalEntries] failed to parse entry {i}: {ex.Message}");
+                }
+            }
+
+            return result;
+        }
+
+        private static string? TpicapCutToCanonical(string? securityExchange) => securityExchange switch
+        {
+            "1000NYK" => "NY",
+            "1000LDN" => "LN",
+            "1500TKY" => "TK",
+            _ => securityExchange
+        };
+
+        private static string? TpicapStrategyToCanonical(string? optionStrategy) => optionStrategy switch
+        {
+            "2" => "Straddle",
+            "4" => "Risk Reversal",
+            "A" => "Straddle Calendar",
+            "B" => "FLY",
+            _ => optionStrategy
         };
     }
 }
