@@ -1012,7 +1012,10 @@ namespace FxFixGateway.Infrastructure.QuickFix
                         MdEntryType = TryGetField(entryGroup, 269),
                         Price = price,
                         Size = size,
-                        PositionNo = TryGetIntField(entryGroup, 290),
+                        // TPICAP skickar inte tag 290 i 35=X. En entry per meddelande
+                        // (top-of-book), så defaulta till nivå 1 — annars droppas raden
+                        // av PositionNo.HasValue-grinden i MarketDataService.
+                        PositionNo = TryGetIntField(entryGroup, 290) ?? 1,
                         Originator = TryGetField(entryGroup, 282),
                     });
                 }
