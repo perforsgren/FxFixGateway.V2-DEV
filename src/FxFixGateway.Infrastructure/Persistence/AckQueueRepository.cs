@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Data;
+using System.Threading;
 using System.Threading.Tasks;
 using FxFixGateway.Domain.Constants;
 using FxFixGateway.Domain.Enums;
@@ -22,7 +23,7 @@ namespace FxFixGateway.Infrastructure.Persistence
             _connectionString = connectionString;
         }
 
-        public async Task<IEnumerable<PendingAck>> GetPendingAcksAsync(int maxCount = 100)
+        public async Task<IEnumerable<PendingAck>> GetPendingAcksAsync(int maxCount = 100, CancellationToken ct = default)
         {
             var result = new List<PendingAck>();
 
@@ -47,15 +48,15 @@ namespace FxFixGateway.Infrastructure.Persistence
             try
             {
                 await using var connection = new MySqlConnection(_connectionString);
-                await connection.OpenAsync();
+                await connection.OpenAsync(ct);
 
                 await using var command = new MySqlCommand(sql, connection);
                 command.Parameters.AddWithValue("@MaxCount", maxCount);
                 command.Parameters.AddWithValue("@StatusReady", DbAckStatus.ReadyToAck);
 
-                await using var reader = await command.ExecuteReaderAsync(CommandBehavior.CloseConnection);
+                await using var reader = await command.ExecuteReaderAsync(CommandBehavior.CloseConnection, ct);
 
-                while (await reader.ReadAsync())
+                while (await reader.ReadAsync(ct))
                 {
                     result.Add(new PendingAck(
                         tradeId: reader.GetInt64("TradeId"),
@@ -70,6 +71,10 @@ namespace FxFixGateway.Infrastructure.Persistence
                     ));
                 }
             }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                // Förväntad avbrytning vid shutdown — returnera vad vi hann hämta
+            }
             catch (MySqlException ex)
             {
                 System.Diagnostics.Debug.WriteLine($"[AckQueueRepository] GetPendingAcksAsync error: {ex.Number} - {ex.Message}");
@@ -82,7 +87,7 @@ namespace FxFixGateway.Infrastructure.Persistence
             return result;
         }
 
-        public async Task<IEnumerable<PendingAck>> GetRejectedAcksAsync(int maxCount = 100)
+        public async Task<IEnumerable<PendingAck>> GetRejectedAcksAsync(int maxCount = 100, CancellationToken ct = default)
         {
             var result = new List<PendingAck>();
 
@@ -107,15 +112,15 @@ namespace FxFixGateway.Infrastructure.Persistence
             try
             {
                 await using var connection = new MySqlConnection(_connectionString);
-                await connection.OpenAsync();
+                await connection.OpenAsync(ct);
 
                 await using var command = new MySqlCommand(sql, connection);
                 command.Parameters.AddWithValue("@MaxCount", maxCount);
                 command.Parameters.AddWithValue("@StatusRejected", DbAckStatus.AckRejected);
 
-                await using var reader = await command.ExecuteReaderAsync(CommandBehavior.CloseConnection);
+                await using var reader = await command.ExecuteReaderAsync(CommandBehavior.CloseConnection, ct);
 
-                while (await reader.ReadAsync())
+                while (await reader.ReadAsync(ct))
                 {
                     result.Add(new PendingAck(
                         tradeId: reader.GetInt64("TradeId"),
@@ -131,6 +136,10 @@ namespace FxFixGateway.Infrastructure.Persistence
                             ? null : reader.GetString("LastError")
                     ));
                 }
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                // Förväntad avbrytning vid shutdown — returnera vad vi hann hämta
             }
             catch (MySqlException ex)
             {

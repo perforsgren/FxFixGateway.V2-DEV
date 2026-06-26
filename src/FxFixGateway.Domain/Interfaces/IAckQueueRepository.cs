@@ -1,5 +1,6 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
+using System.Threading;
 using System.Threading.Tasks;
 using FxFixGateway.Domain.Enums;
 using FxFixGateway.Domain.ValueObjects;
@@ -14,13 +15,13 @@ namespace FxFixGateway.Domain.Interfaces
         /// <summary>
         /// Hämtar alla pending ACKs från databasen (READY_TO_ACK only).
         /// </summary>
-        Task<IEnumerable<PendingAck>> GetPendingAcksAsync(int maxCount = 100);
+        Task<IEnumerable<PendingAck>> GetPendingAcksAsync(int maxCount = 100, CancellationToken ct = default);
 
         /// <summary>
         /// Hämtar trades med Status=ACK_REJECTED som ska skicka FIX AR Reject.
         /// ExternalTradeKey (AE tag 818) ekas i AR tag 881, LastError blir tag 58.
         /// </summary>
-        Task<IEnumerable<PendingAck>> GetRejectedAcksAsync(int maxCount = 100);
+        Task<IEnumerable<PendingAck>> GetRejectedAcksAsync(int maxCount = 100, CancellationToken ct = default);
 
         /// <summary>
         /// Hämtar ACKs för en specifik session med valfri status-filtrering.

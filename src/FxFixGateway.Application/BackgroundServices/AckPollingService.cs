@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
@@ -61,21 +61,34 @@ namespace FxFixGateway.Application.BackgroundServices
         {
             _logger.LogInformation("ACK Polling Service started");
 
-            await Task.Delay(TimeSpan.FromSeconds(5), stoppingToken);
+            try
+            {
+                await Task.Delay(TimeSpan.FromSeconds(5), stoppingToken);
+            }
+            catch (OperationCanceledException)
+            {
+                return;
+            }
 
-            while (!stoppingToken.IsCancellationRequested)
+            using var timer = new PeriodicTimer(_pollingInterval);
+
+            while (await timer.WaitForNextTickAsync(stoppingToken))
             {
                 try
                 {
-                    await ProcessBatchAsync(await _ackQueueRepository.GetPendingAcksAsync(maxCount: 100), stoppingToken);
-                    await ProcessBatchAsync(await _ackQueueRepository.GetRejectedAcksAsync(maxCount: 100), stoppingToken);
+                    await ProcessBatchAsync(
+                        await _ackQueueRepository.GetPendingAcksAsync(maxCount: 100, stoppingToken), stoppingToken);
+                    await ProcessBatchAsync(
+                        await _ackQueueRepository.GetRejectedAcksAsync(maxCount: 100, stoppingToken), stoppingToken);
+                }
+                catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+                {
+                    break;
                 }
                 catch (Exception ex)
                 {
                     _logger.LogError(ex, "Error processing ACK queue");
                 }
-
-                await Task.Delay(_pollingInterval, stoppingToken);
             }
 
             _logger.LogInformation("ACK Polling Service stopped");
