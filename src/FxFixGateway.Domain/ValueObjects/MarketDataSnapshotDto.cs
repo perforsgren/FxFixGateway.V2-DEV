@@ -68,7 +68,8 @@ namespace FxFixGateway.Domain.ValueObjects
         public decimal? Price { get; init; }
         public decimal? Size { get; init; }
         public int? PositionNo { get; init; }               // härledd ur MDEntryID (278)
-        public string? Originator { get; init; }            // tag 284 DeskID (eget pris)
+        public string? Originator { get; init; }            // tag 284 DeskID, desk-del (t.ex. SWEDBANK.SWED)
+        public string? TraderId { get; init; }              // tag 284 DeskID, trader-del (t.ex. TEST1)
     }
 
 }

@@ -167,6 +167,7 @@ namespace FxFixGateway.Application.Services
                     Price = e.Price,
                     Size = e.Size,
                     Originator = e.Originator,
+                    TraderId = e.TraderId,
                     SnapshotId = 0,
                     UpdatedUtc = now
                 });
@@ -188,6 +189,7 @@ namespace FxFixGateway.Application.Services
                         Price = e.Price,
                         Size = e.Size,
                         Originator = e.Originator,
+                        TraderId = e.TraderId,
                         IsActive = true,
                         UpdatedUtc = now
                     });
@@ -393,6 +395,7 @@ namespace FxFixGateway.Application.Services
                     Price = e.Price,
                     Size = e.Size,
                     Originator = e.Originator,
+                    TraderId = e.TraderId,
                     IsActive = true,
                     UpdatedUtc = now
                 })

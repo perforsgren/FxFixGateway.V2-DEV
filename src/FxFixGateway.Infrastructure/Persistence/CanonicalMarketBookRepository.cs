@@ -48,10 +48,10 @@ namespace FxFixGateway.Infrastructure.Persistence
                 const string upsert = @"
                     INSERT INTO fxvol.canonical_market_book
                         (venue, session_key, security_id, currency_pair, tenor, cut, strategy, delta,
-                         md_entry_type, position_no, price, size, originator, is_active, updated_utc)
+                         md_entry_type, position_no, price, size, originator, trader_id, is_active, updated_utc)
                     VALUES
                         (@Venue, @SessionKey, @SecurityId, @CurrencyPair, @Tenor, @Cut, @Strategy, @Delta,
-                         @MdEntryType, @PositionNo, @Price, @Size, @Originator, 1, @UpdatedUtc)
+                         @MdEntryType, @PositionNo, @Price, @Size, @Originator, @TraderId, 1, @UpdatedUtc)
                     ON DUPLICATE KEY UPDATE
                         is_active     = 1,
                         currency_pair = VALUES(currency_pair),
@@ -60,6 +60,7 @@ namespace FxFixGateway.Infrastructure.Persistence
                         strategy      = VALUES(strategy),
                         delta         = VALUES(delta),
                         originator    = VALUES(originator),
+                        trader_id     = VALUES(trader_id),
                         updated_utc   = IF(price <> VALUES(price) OR size <> VALUES(size),
                                           VALUES(updated_utc), updated_utc),
                         price         = VALUES(price),
@@ -82,6 +83,7 @@ namespace FxFixGateway.Infrastructure.Persistence
                     cmd.Parameters.AddWithValue("@Price", (object?)e.Price ?? DBNull.Value);
                     cmd.Parameters.AddWithValue("@Size", (object?)e.Size ?? DBNull.Value);
                     cmd.Parameters.AddWithValue("@Originator", (object?)e.Originator ?? DBNull.Value);
+                    cmd.Parameters.AddWithValue("@TraderId", (object?)e.TraderId ?? DBNull.Value);
                     cmd.Parameters.AddWithValue("@UpdatedUtc", now);
                     await cmd.ExecuteNonQueryAsync();
                 }
@@ -120,7 +122,7 @@ namespace FxFixGateway.Infrastructure.Persistence
         {
             var sb = new StringBuilder(@"
                 SELECT id, venue, session_key, security_id, currency_pair, tenor, cut, strategy, delta,
-                       md_entry_type, position_no, price, size, originator, is_active, updated_utc
+                       md_entry_type, position_no, price, size, originator, trader_id, is_active, updated_utc
                 FROM fxvol.canonical_market_book
                 WHERE currency_pair = @CurrencyPair");
 
@@ -161,6 +163,7 @@ namespace FxFixGateway.Infrastructure.Persistence
             Price = r.IsDBNull(r.GetOrdinal("price")) ? null : r.GetDecimal("price"),
             Size = r.IsDBNull(r.GetOrdinal("size")) ? null : r.GetDecimal("size"),
             Originator = r.IsDBNull(r.GetOrdinal("originator")) ? null : r.GetString("originator"),
+            TraderId = r.IsDBNull(r.GetOrdinal("trader_id")) ? null : r.GetString("trader_id"),
             IsActive = r.GetBoolean("is_active"),
             UpdatedUtc = r.GetDateTime("updated_utc"),
         };
@@ -174,10 +177,10 @@ namespace FxFixGateway.Infrastructure.Persistence
             const string upsert = @"
                 INSERT INTO fxvol.canonical_market_book
                     (venue, session_key, security_id, currency_pair, tenor, cut, strategy, delta,
-                     md_entry_type, position_no, price, size, originator, is_active, updated_utc)
+                     md_entry_type, position_no, price, size, originator, trader_id, is_active, updated_utc)
                 VALUES
                     (@Venue, @SessionKey, @SecurityId, @CurrencyPair, @Tenor, @Cut, @Strategy, @Delta,
-                     @MdEntryType, @PositionNo, @Price, @Size, @Originator, 1, @UpdatedUtc)
+                     @MdEntryType, @PositionNo, @Price, @Size, @Originator, @TraderId, 1, @UpdatedUtc)
                 ON DUPLICATE KEY UPDATE
                     is_active     = 1,
                     currency_pair = VALUES(currency_pair),
@@ -186,6 +189,7 @@ namespace FxFixGateway.Infrastructure.Persistence
                     strategy      = VALUES(strategy),
                     delta         = VALUES(delta),
                     originator    = VALUES(originator),
+                    trader_id     = VALUES(trader_id),
                     updated_utc   = IF(price <> VALUES(price) OR size <> VALUES(size),
                                       VALUES(updated_utc), updated_utc),
                     price         = VALUES(price),
@@ -211,6 +215,7 @@ namespace FxFixGateway.Infrastructure.Persistence
                 cmd.Parameters.AddWithValue("@Price", (object?)e.Price ?? DBNull.Value);
                 cmd.Parameters.AddWithValue("@Size", (object?)e.Size ?? DBNull.Value);
                 cmd.Parameters.AddWithValue("@Originator", (object?)e.Originator ?? DBNull.Value);
+                cmd.Parameters.AddWithValue("@TraderId", (object?)e.TraderId ?? DBNull.Value);
                 cmd.Parameters.AddWithValue("@UpdatedUtc", now);
                 await cmd.ExecuteNonQueryAsync();
             }

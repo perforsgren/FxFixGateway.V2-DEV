@@ -917,6 +917,8 @@ namespace FxFixGateway.Infrastructure.QuickFix
                             System.Globalization.CultureInfo.InvariantCulture, out var s))
                         size = s;
 
+                    var (deskOriginator, deskTraderId) = SplitTpicapDeskId(TryGetField(entryGroup, 284));
+
                     entries.Add(new MarketDataEntryDto
                     {
                         MdEntryType = TryGetField(entryGroup, 269),
@@ -924,7 +926,8 @@ namespace FxFixGateway.Infrastructure.QuickFix
                         Size = size,
                         QuoteCondition = TryGetField(entryGroup, 276),
                         PositionNo = TryGetIntField(entryGroup, 290),
-                        Originator = TryGetField(entryGroup, 284),   // DeskID (var 282, finns ej i FXOhub)
+                        Originator = deskOriginator,   // DeskID (284) desk-del
+                        TraderId = deskTraderId,       // DeskID (284) trader-del
                     });
                 }
                 catch (Exception ex)
@@ -1009,6 +1012,7 @@ namespace FxFixGateway.Infrastructure.QuickFix
                                   : (message.IsSetField(278) ? message.GetString(278) : null);
                     var deskId = entryGroup.IsSetField(284) ? entryGroup.GetString(284)
                                : (message.IsSetField(284) ? message.GetString(284) : null);
+                    var (deskOriginator, deskTraderId) = SplitTpicapDeskId(deskId);
 
                     result.Add(new TpicapIncrementalEntryDto
                     {
@@ -1034,8 +1038,9 @@ namespace FxFixGateway.Infrastructure.QuickFix
                         PositionNo = ParseMdEntryIdToPosition(mdEntryId),
                         Price = price,
                         Size = size,
-                        // Tag 284 DeskID = ägande desk, skickas bara för egna priser.
-                        Originator = deskId,
+                        // Tag 284 DeskID splittas i desk (originator) + trader (traderId).
+                        Originator = deskOriginator,
+                        TraderId = deskTraderId,
                     });
                 }
                 catch (Exception ex)
@@ -1060,6 +1065,21 @@ namespace FxFixGateway.Infrastructure.QuickFix
                     System.Globalization.CultureInfo.InvariantCulture, out var d))
                 return (int)d;
             return Math.Abs(mdEntryId.GetHashCode()) % 1_000_000;
+        }
+
+        // TPICAP DeskID (tag 284) kombinerar desk och trader i en sträng, separerade av
+        // sista mellanslaget: "SWEDBANK.SWED TEST1" → desk="SWEDBANK.SWED", trader="TEST1".
+        // Desk-delen kan själv innehålla punkter, därför splittas på SISTA mellanslaget.
+        private static (string? Originator, string? TraderId) SplitTpicapDeskId(string? deskId)
+        {
+            if (string.IsNullOrWhiteSpace(deskId))
+                return (null, null);
+
+            var lastSpace = deskId.LastIndexOf(' ');
+            if (lastSpace <= 0 || lastSpace == deskId.Length - 1)
+                return (deskId, null);
+
+            return (deskId[..lastSpace], deskId[(lastSpace + 1)..]);
         }
 
         private static string? TpicapCutToCanonical(string? securityExchange) => securityExchange switch
