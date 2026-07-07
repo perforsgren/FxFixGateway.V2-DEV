@@ -14,7 +14,7 @@ namespace FxFixGateway.Application.Services
 
         private static readonly HashSet<string> MarketDataSessions = new(StringComparer.OrdinalIgnoreCase)
         {
-            "VOLB_FIXHUB_DEV"
+            "VOLB_FIXHUB_PROD"
         };
 
         // Cache av tillåtna valutapar per session — laddas en gång, rensas ej (statisk konfiguration)
