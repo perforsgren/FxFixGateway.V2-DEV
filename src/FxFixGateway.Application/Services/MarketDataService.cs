@@ -117,6 +117,17 @@ namespace FxFixGateway.Application.Services
                 // Trade prints (269=2) → market_trades, aldrig till boken.
                 if (e.MdEntryType == "2")
                 {
+                    DateOnly? tradeDate = null;
+                    if (e.EntryDate is { Length: 8 } d &&
+                        DateTime.TryParseExact(d, "yyyyMMdd", null,
+                            System.Globalization.DateTimeStyles.None, out var parsedDate))
+                        tradeDate = DateOnly.FromDateTime(parsedDate);
+
+                    TimeOnly? tradeTime = null;
+                    if (!string.IsNullOrEmpty(e.EntryTime) &&
+                        TimeSpan.TryParse(e.EntryTime, out var parsedTime))
+                        tradeTime = TimeOnly.FromTimeSpan(parsedTime);
+
                     trades.Add(new MarketTrade
                     {
                         SecurityId = e.SecurityId,
@@ -128,6 +139,8 @@ namespace FxFixGateway.Application.Services
                         Delta = e.Delta,
                         Price = e.Price,
                         Size = e.Size,
+                        TradeDate = tradeDate,
+                        TradeTime = tradeTime,
                         TradeCondition = e.TradeCondition,
                         SnapshotId = 0,
                         ReceivedUtc = now
@@ -302,7 +315,7 @@ namespace FxFixGateway.Application.Services
                 tenor = tpicapInstrument.Tenor;
                 cut = tpicapInstrument.Cut;
                 strategy = tpicapInstrument.Strategy;
-                delta = null;
+                delta = tpicapInstrument.Delta;   // FIX: var hårdkodat null — tappade beräknat delta
             }
             else
             {
@@ -340,7 +353,20 @@ namespace FxFixGateway.Application.Services
                 return;
             }
 
-            var trades = BuildTrades(snapshot, snapshotId: 0);
+            // Kanoniska display-värden. Volbroker: råkod → display-namn.
+            // TPICAP: snapshot.Strategy/snapshot.Delta är redan kanoniska — passera igenom
+            // oförändrat (tidigare kördes de av misstag genom Volbrokers råkod-konvertering,
+            // vilket alltid gav null för TPICAP eftersom "Straddle" m.fl. inte matchar någon
+            // Volbroker-case).
+            var venue = TpicapSessions.Contains(sessionKey) ? "TPICAP" : "VOLBROKER";
+            var canonicalStrategy = TpicapSessions.Contains(sessionKey)
+                ? snapshot.Strategy
+                : ToStrategyDisplayName(snapshot.Strategy);
+            var canonicalDelta = TpicapSessions.Contains(sessionKey)
+                ? snapshot.Delta
+                : ToDeltaDisplayName(snapshot.Delta);
+
+            var trades = BuildTrades(snapshot, snapshotId: 0, canonicalStrategy, canonicalDelta);
             var snapshotId = await _snapshotRepo.InsertSnapshotAsync(snapshot, trades);
 
             _logger.LogDebug(
@@ -351,19 +377,9 @@ namespace FxFixGateway.Application.Services
             if (bookEntries.Count > 0)
                 await _snapshotRepo.UpsertBookEntriesAsync(bookEntries);
 
-            // Canonical merge-lager. Volbroker: råstrategi → display-namn.
-            // TPICAP: snapshot.Strategy är redan kanonisk.
-            var venue = TpicapSessions.Contains(sessionKey) ? "TPICAP" : "VOLBROKER";
-            var canonicalStrategy = TpicapSessions.Contains(sessionKey)
-                ? snapshot.Strategy
-                : ToStrategyDisplayName(snapshot.Strategy);
-            var canonicalDelta = TpicapSessions.Contains(sessionKey)
-                ? null
-                : ToDeltaDisplayName(delta);
-
             var canonical = BuildCanonicalEntries(
                 venue, sessionKey, dto.SecurityId!,
-                currencyPair, tenor, cut, canonicalStrategy, canonicalDelta, snapshot.Entries);
+                currencyPair, tenor, cut, canonicalStrategy, canonicalDelta, product, snapshot.Entries);
             if (canonical.Count > 0)
                 await _canonicalRepo.UpsertEntriesAsync(canonical);
         }
@@ -371,7 +387,7 @@ namespace FxFixGateway.Application.Services
         private static List<CanonicalBookEntry> BuildCanonicalEntries(
             string venue, string sessionKey, string securityId,
             string? currencyPair, string? tenor, string? cut, string? strategy, string? delta,
-            IEnumerable<MarketDataEntry> entries)
+            int? product, IEnumerable<MarketDataEntry> entries)
         {
             // Kräver att alla kanoniska dimensioner finns — annars går raden inte att merga.
             if (currencyPair == null || tenor == null || cut == null || strategy == null)
@@ -390,6 +406,7 @@ namespace FxFixGateway.Application.Services
                     Cut = cut,
                     Strategy = strategy,
                     Delta = delta,
+                    Product = product,
                     MdEntryType = e.MdEntryType,
                     PositionNo = e.PositionNo!.Value,
                     Price = e.Price,
@@ -450,7 +467,8 @@ namespace FxFixGateway.Application.Services
                 .ToList();
         }
 
-        private static List<MarketTrade> BuildTrades(MarketDataSnapshot snapshot, long snapshotId)
+        private static List<MarketTrade> BuildTrades(
+            MarketDataSnapshot snapshot, long snapshotId, string? canonicalStrategy, string? canonicalDelta)
         {
             var now = DateTime.UtcNow;
             return snapshot.Entries
@@ -462,8 +480,8 @@ namespace FxFixGateway.Application.Services
                     CurrencyPair = snapshot.CurrencyPair,
                     Tenor = snapshot.Tenor,
                     Cut = snapshot.Cut,
-                    Strategy = ToStrategyDisplayName(snapshot.Strategy),
-                    Delta = ToDeltaDisplayName(snapshot.Delta),
+                    Strategy = canonicalStrategy,
+                    Delta = canonicalDelta,
                     Price = e.Price,
                     Size = e.Size,
                     TradeDate = e.EntryDate.HasValue ? DateOnly.FromDateTime(e.EntryDate.Value) : null,

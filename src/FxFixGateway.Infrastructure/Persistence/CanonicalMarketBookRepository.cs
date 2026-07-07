@@ -47,10 +47,10 @@ namespace FxFixGateway.Infrastructure.Persistence
 
                 const string upsert = @"
                     INSERT INTO fxvol.canonical_market_book
-                        (venue, session_key, security_id, currency_pair, tenor, cut, strategy, delta,
+                        (venue, session_key, security_id, currency_pair, tenor, cut, strategy, delta, product,
                          md_entry_type, position_no, price, size, originator, trader_id, is_active, updated_utc)
                     VALUES
-                        (@Venue, @SessionKey, @SecurityId, @CurrencyPair, @Tenor, @Cut, @Strategy, @Delta,
+                        (@Venue, @SessionKey, @SecurityId, @CurrencyPair, @Tenor, @Cut, @Strategy, @Delta, @Product,
                          @MdEntryType, @PositionNo, @Price, @Size, @Originator, @TraderId, 1, @UpdatedUtc)
                     ON DUPLICATE KEY UPDATE
                         is_active     = 1,
@@ -59,6 +59,7 @@ namespace FxFixGateway.Infrastructure.Persistence
                         cut           = VALUES(cut),
                         strategy      = VALUES(strategy),
                         delta         = VALUES(delta),
+                        product       = VALUES(product),
                         originator    = VALUES(originator),
                         trader_id     = VALUES(trader_id),
                         updated_utc   = IF(price <> VALUES(price) OR size <> VALUES(size),
@@ -78,6 +79,7 @@ namespace FxFixGateway.Infrastructure.Persistence
                     cmd.Parameters.AddWithValue("@Cut", e.Cut);
                     cmd.Parameters.AddWithValue("@Strategy", e.Strategy);
                     cmd.Parameters.AddWithValue("@Delta", (object?)e.Delta ?? DBNull.Value);
+                    cmd.Parameters.AddWithValue("@Product", (object?)e.Product ?? DBNull.Value);
                     cmd.Parameters.AddWithValue("@MdEntryType", e.MdEntryType);
                     cmd.Parameters.AddWithValue("@PositionNo", e.PositionNo);
                     cmd.Parameters.AddWithValue("@Price", (object?)e.Price ?? DBNull.Value);
@@ -121,7 +123,7 @@ namespace FxFixGateway.Infrastructure.Persistence
             string? cut = null, bool activeOnly = true)
         {
             var sb = new StringBuilder(@"
-                SELECT id, venue, session_key, security_id, currency_pair, tenor, cut, strategy, delta,
+                SELECT id, venue, session_key, security_id, currency_pair, tenor, cut, strategy, delta, product,
                        md_entry_type, position_no, price, size, originator, trader_id, is_active, updated_utc
                 FROM fxvol.canonical_market_book
                 WHERE currency_pair = @CurrencyPair");
@@ -158,6 +160,7 @@ namespace FxFixGateway.Infrastructure.Persistence
             Cut = r.GetString("cut"),
             Strategy = r.GetString("strategy"),
             Delta = r.IsDBNull(r.GetOrdinal("delta")) ? null : r.GetString("delta"),
+            Product = r.IsDBNull(r.GetOrdinal("product")) ? null : r.GetInt32("product"),
             MdEntryType = r.GetString("md_entry_type"),
             PositionNo = r.GetInt32("position_no"),
             Price = r.IsDBNull(r.GetOrdinal("price")) ? null : r.GetDecimal("price"),
@@ -176,10 +179,10 @@ namespace FxFixGateway.Infrastructure.Persistence
             // md_entry_type, position_no) där position_no = MDEntryID för TPICAP.
             const string upsert = @"
                 INSERT INTO fxvol.canonical_market_book
-                    (venue, session_key, security_id, currency_pair, tenor, cut, strategy, delta,
+                    (venue, session_key, security_id, currency_pair, tenor, cut, strategy, delta, product,
                      md_entry_type, position_no, price, size, originator, trader_id, is_active, updated_utc)
                 VALUES
-                    (@Venue, @SessionKey, @SecurityId, @CurrencyPair, @Tenor, @Cut, @Strategy, @Delta,
+                    (@Venue, @SessionKey, @SecurityId, @CurrencyPair, @Tenor, @Cut, @Strategy, @Delta, @Product,
                      @MdEntryType, @PositionNo, @Price, @Size, @Originator, @TraderId, 1, @UpdatedUtc)
                 ON DUPLICATE KEY UPDATE
                     is_active     = 1,
@@ -188,6 +191,7 @@ namespace FxFixGateway.Infrastructure.Persistence
                     cut           = VALUES(cut),
                     strategy      = VALUES(strategy),
                     delta         = VALUES(delta),
+                    product       = VALUES(product),
                     originator    = VALUES(originator),
                     trader_id     = VALUES(trader_id),
                     updated_utc   = IF(price <> VALUES(price) OR size <> VALUES(size),
@@ -210,6 +214,7 @@ namespace FxFixGateway.Infrastructure.Persistence
                 cmd.Parameters.AddWithValue("@Cut", e.Cut);
                 cmd.Parameters.AddWithValue("@Strategy", e.Strategy);
                 cmd.Parameters.AddWithValue("@Delta", (object?)e.Delta ?? DBNull.Value);
+                cmd.Parameters.AddWithValue("@Product", (object?)e.Product ?? DBNull.Value);
                 cmd.Parameters.AddWithValue("@MdEntryType", e.MdEntryType);
                 cmd.Parameters.AddWithValue("@PositionNo", e.PositionNo);
                 cmd.Parameters.AddWithValue("@Price", (object?)e.Price ?? DBNull.Value);

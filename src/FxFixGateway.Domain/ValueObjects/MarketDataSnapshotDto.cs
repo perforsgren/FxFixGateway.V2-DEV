@@ -65,6 +65,8 @@ namespace FxFixGateway.Domain.ValueObjects
         public string? MdEntryType { get; init; }           // tag 269: 0=Bid,1=Ask,2=Trade,J=EmptyBook
         public string? MdEntryId { get; init; }             // tag 278 (per-entry-identitet)
         public string? TradeCondition { get; init; }        // tag 277 (för trades)
+        public string? EntryDate { get; init; }             // tag 272 (YYYYMMDD, för trades)
+        public string? EntryTime { get; init; }             // tag 273 (HH:MM:SS[.sss], för trades)
         public decimal? Price { get; init; }
         public decimal? Size { get; init; }
         public int? PositionNo { get; init; }               // härledd ur MDEntryID (278)

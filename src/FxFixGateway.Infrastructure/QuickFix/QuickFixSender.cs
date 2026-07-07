@@ -95,7 +95,7 @@ namespace FxFixGateway.Infrastructure.QuickFix
         /// Butterfly. RR/BF begärs med DeltaType=0 (AllPitIncludingTenDeltaPit) så att
         /// både 25D- och 10D-pit levereras.
         /// </summary>
-        public void SendMarketDataRequestProbeOLD(string sessionKey, IEnumerable<string> symbols)
+        public void SendMarketDataRequestProbe(string sessionKey, IEnumerable<string> symbols)
         {
             if (!_sessionIdMap.TryGetValue(sessionKey, out var sessionId))
             {
@@ -188,7 +188,7 @@ namespace FxFixGateway.Infrastructure.QuickFix
         /// enbart Straddle, Bid+Offer, ingen DeltaType/Trade. Samma form som den
         /// ursprungliga probe som är känd att ha fungerat.
         /// </summary>
-        public void SendMarketDataRequestProbe(string sessionKey, IEnumerable<string> symbols)
+        public void SendMarketDataRequestProbe_TEMP(string sessionKey, IEnumerable<string> symbols)
         {
             if (!_sessionIdMap.TryGetValue(sessionKey, out var sessionId))
             {

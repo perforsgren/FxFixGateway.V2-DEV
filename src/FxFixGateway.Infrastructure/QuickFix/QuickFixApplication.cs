@@ -1014,6 +1014,11 @@ namespace FxFixGateway.Infrastructure.QuickFix
                                : (message.IsSetField(284) ? message.GetString(284) : null);
                     var (deskOriginator, deskTraderId) = SplitTpicapDeskId(deskId);
 
+                    var entryDate = entryGroup.IsSetField(272) ? entryGroup.GetString(272)
+                                   : (message.IsSetField(272) ? message.GetString(272) : null);
+                    var entryTime = entryGroup.IsSetField(273) ? entryGroup.GetString(273)
+                                   : (message.IsSetField(273) ? message.GetString(273) : null);
+
                     result.Add(new TpicapIncrementalEntryDto
                     {
                         SecurityId = securityId,
@@ -1032,6 +1037,8 @@ namespace FxFixGateway.Infrastructure.QuickFix
                         MdEntryType = TryGetField(entryGroup, 269),
                         MdEntryId = mdEntryId,
                         TradeCondition = TryGetField(entryGroup, 277),
+                        EntryDate = entryDate,
+                        EntryTime = entryTime,
                         // Ingen tag 290 — MDEntryID är per-entry-identiteten. Heltalsdelen
                         // blir position_no så konkurrerande quotes inte kolliderar och
                         // en delete kan träffa exakt rätt entry.
