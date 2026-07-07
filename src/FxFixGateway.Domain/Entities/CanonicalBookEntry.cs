@@ -21,6 +21,7 @@ namespace FxFixGateway.Domain.Entities
         public decimal? Price { get; set; }
         public decimal? Size { get; set; }
         public string? Originator { get; set; }
+        public string? TraderId { get; set; }
         public bool IsActive { get; set; } = true;
         public DateTime UpdatedUtc { get; set; }
     }
