@@ -277,7 +277,7 @@ namespace FxFixGateway.Application.Services
                     SessionKey = sessionKey,
                     SecurityId = dto.SecurityId!,
                     Symbol = dto.Symbol,
-                    CurrencyPair = dto.Symbol?.Replace("/", ""),
+                    CurrencyPair = dto.Symbol,
                     SecurityType = dto.SecurityType,
                     SecurityExchange = dto.SecurityExchange,
                     TenorValue = dto.TenorValue,

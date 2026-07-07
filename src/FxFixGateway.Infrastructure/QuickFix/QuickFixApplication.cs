@@ -1013,7 +1013,7 @@ namespace FxFixGateway.Infrastructure.QuickFix
                     result.Add(new TpicapIncrementalEntryDto
                     {
                         SecurityId = securityId,
-                        CurrencyPair = symbol?.Replace("/", ""),
+                        CurrencyPair = symbol,
                         Tenor = tenorValue,
                         Cut = TpicapCutToCanonical(securityExchange),
                         Strategy = TpicapStrategyToCanonical(optionStrategy),
