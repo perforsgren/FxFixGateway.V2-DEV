@@ -144,6 +144,33 @@ namespace FxFixGateway.Application.Services
             if (upsert.Count > 0)
                 await _snapshotRepo.UpsertBookEntriesAsync(upsert);
 
+            // Dimensionen: upserta tpicap_instruments för instrument som bara syns i 35=X
+            // (t.ex. 10D-pit). Canonical-only → rör inte raw-kolumner som 35=W äger.
+            var instruments = entries
+                .Where(e => e.MdUpdateAction != "2" && !string.IsNullOrEmpty(e.SecurityId))
+                .GroupBy(e => e.SecurityId)
+                .Select(g => g.First())
+                .Select(e => new TpicapInstrument
+                {
+                    SessionKey = sessionKey,
+                    SecurityId = e.SecurityId,
+                    Symbol = e.Symbol,
+                    CurrencyPair = e.CurrencyPair,
+                    SecurityType = e.SecurityType,
+                    SecurityExchange = e.SecurityExchange,
+                    TenorValue = e.TenorValue,
+                    OptionStrategy = e.OptionStrategy,
+                    Tenor = e.Tenor,
+                    Cut = e.Cut,
+                    Strategy = e.Strategy,
+                    Delta = e.Delta,
+                    DiscoveredUtc = now,
+                })
+                .ToList();
+
+            foreach (var instrument in instruments)
+                await _tpicapRepo.UpsertCanonicalAsync(instrument);
+
             // Canonical: bara entries med full kanonisk identitet (DTO bär den).
             var canonical = entries
                 .Where(e => e.MdUpdateAction != "2"

@@ -54,6 +54,13 @@ namespace FxFixGateway.Domain.ValueObjects
         public string? Cut { get; init; }
         public string? Strategy { get; init; }
         public string? Delta { get; init; }                 // kanonisk: ATM/25D/10D (ur tag 6008)
+        // Raw composite-taggar (för tpicap_instruments-dimensionen)
+        public string? Symbol { get; init; }                // tag 55
+        public string? SecurityType { get; init; }          // tag 167
+        public string? SecurityExchange { get; init; }      // tag 207
+        public string? TenorValue { get; init; }            // tag 6215
+        public string? OptionStrategy { get; init; }        // tag 9126
+        public string? DeltaType { get; init; }             // tag 6008
         public string MdUpdateAction { get; init; } = "0";   // tag 279: 0=New,1=Change,2=Delete
         public string? MdEntryType { get; init; }           // tag 269
         public decimal? Price { get; init; }

@@ -1013,13 +1013,16 @@ namespace FxFixGateway.Infrastructure.QuickFix
                         Cut = TpicapCutToCanonical(securityExchange),
                         Strategy = TpicapStrategyToCanonical(optionStrategy),
                         Delta = TpicapDeltaToCanonical(optionStrategy, deltaType),
+                        Symbol = symbol,
+                        SecurityType = securityType,
+                        SecurityExchange = securityExchange,
+                        TenorValue = tenorValue,
+                        OptionStrategy = optionStrategy,
+                        DeltaType = deltaType,
                         MdUpdateAction = TryGetField(entryGroup, 279) ?? "0",
                         MdEntryType = TryGetField(entryGroup, 269),
                         Price = price,
                         Size = size,
-                        // TPICAP skickar inte tag 290 i 35=X. En entry per meddelande
-                        // (top-of-book), så defaulta till nivå 1 — annars droppas raden
-                        // av PositionNo.HasValue-grinden i MarketDataService.
                         PositionNo = TryGetIntField(entryGroup, 290) ?? 1,
                         Originator = TryGetField(entryGroup, 282),
                     });

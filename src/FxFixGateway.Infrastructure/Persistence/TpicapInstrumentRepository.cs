@@ -79,6 +79,51 @@ namespace FxFixGateway.Infrastructure.Persistence
             }
         }
 
+        public async Task UpsertCanonicalAsync(TpicapInstrument instrument)
+        {
+            const string sql = @"
+                INSERT INTO fxvol.tpicap_instruments
+                    (session_key, security_id, symbol, currency_pair, security_type,
+                     security_exchange, tenor_value, option_strategy,
+                     tenor, cut, strategy, delta, discovered_utc)
+                VALUES
+                    (@SessionKey, @SecurityId, @Symbol, @CurrencyPair, @SecurityType,
+                     @SecurityExchange, @TenorValue, @OptionStrategy,
+                     @Tenor, @Cut, @Strategy, @Delta, @DiscoveredUtc)
+                ON DUPLICATE KEY UPDATE
+                    tenor       = VALUES(tenor),
+                    cut         = VALUES(cut),
+                    strategy    = VALUES(strategy),
+                    delta       = VALUES(delta),
+                    updated_utc = CURRENT_TIMESTAMP(3);";
+
+            try
+            {
+                await using var connection = new MySqlConnection(_connectionString);
+                await connection.OpenAsync();
+                await using var cmd = new MySqlCommand(sql, connection);
+                cmd.Parameters.AddWithValue("@SessionKey", instrument.SessionKey);
+                cmd.Parameters.AddWithValue("@SecurityId", instrument.SecurityId);
+                cmd.Parameters.AddWithValue("@Symbol", (object?)instrument.Symbol ?? DBNull.Value);
+                cmd.Parameters.AddWithValue("@CurrencyPair", (object?)instrument.CurrencyPair ?? DBNull.Value);
+                cmd.Parameters.AddWithValue("@SecurityType", (object?)instrument.SecurityType ?? DBNull.Value);
+                cmd.Parameters.AddWithValue("@SecurityExchange", (object?)instrument.SecurityExchange ?? DBNull.Value);
+                cmd.Parameters.AddWithValue("@TenorValue", (object?)instrument.TenorValue ?? DBNull.Value);
+                cmd.Parameters.AddWithValue("@OptionStrategy", (object?)instrument.OptionStrategy ?? DBNull.Value);
+                cmd.Parameters.AddWithValue("@Tenor", (object?)instrument.Tenor ?? DBNull.Value);
+                cmd.Parameters.AddWithValue("@Cut", (object?)instrument.Cut ?? DBNull.Value);
+                cmd.Parameters.AddWithValue("@Strategy", (object?)instrument.Strategy ?? DBNull.Value);
+                cmd.Parameters.AddWithValue("@Delta", (object?)instrument.Delta ?? DBNull.Value);
+                cmd.Parameters.AddWithValue("@DiscoveredUtc", instrument.DiscoveredUtc);
+                await cmd.ExecuteNonQueryAsync();
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine(
+                    $"[TpicapInstrumentRepository] UpsertCanonicalAsync error: {ex.Message}");
+            }
+        }
+
         public async Task<TpicapInstrument?> GetBySecurityIdAsync(string sessionKey, string securityId)
         {
             const string sql = @"
