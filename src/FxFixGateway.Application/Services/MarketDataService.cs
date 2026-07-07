@@ -159,6 +159,7 @@ namespace FxFixGateway.Application.Services
                     Tenor = e.Tenor!,
                     Cut = e.Cut!,
                     Strategy = e.Strategy!,
+                    Delta = e.Delta,
                     MdEntryType = e.MdEntryType!,
                     PositionNo = e.PositionNo!.Value,
                     Price = e.Price,
@@ -216,6 +217,7 @@ namespace FxFixGateway.Application.Services
                     Tenor = dto.TenorValue,
                     Cut = TpicapCutToCanonical(dto.SecurityExchange),
                     Strategy = TpicapStrategyToCanonical(dto.OptionStrategy),
+                    Delta = TpicapDeltaToCanonical(dto.OptionStrategy, dto.DeltaType),
                     DiscoveredUtc = DateTime.UtcNow,
                 };
                 await _tpicapRepo.UpsertAsync(tpicapInstrument);
@@ -280,18 +282,21 @@ namespace FxFixGateway.Application.Services
             var canonicalStrategy = TpicapSessions.Contains(sessionKey)
                 ? snapshot.Strategy
                 : ToStrategyDisplayName(snapshot.Strategy);
+            var canonicalDelta = TpicapSessions.Contains(sessionKey)
+                ? null
+                : ToDeltaDisplayName(delta);
 
             var canonical = BuildCanonicalEntries(
                 venue, sessionKey, dto.SecurityId!,
-                currencyPair, tenor, cut, canonicalStrategy, snapshot.Entries);
+                currencyPair, tenor, cut, canonicalStrategy, canonicalDelta, snapshot.Entries);
             if (canonical.Count > 0)
                 await _canonicalRepo.UpsertEntriesAsync(canonical);
         }
 
         private static List<CanonicalBookEntry> BuildCanonicalEntries(
-    string venue, string sessionKey, string securityId,
-    string? currencyPair, string? tenor, string? cut, string? strategy,
-    IEnumerable<MarketDataEntry> entries)
+            string venue, string sessionKey, string securityId,
+            string? currencyPair, string? tenor, string? cut, string? strategy, string? delta,
+            IEnumerable<MarketDataEntry> entries)
         {
             // Kräver att alla kanoniska dimensioner finns — annars går raden inte att merga.
             if (currencyPair == null || tenor == null || cut == null || strategy == null)
@@ -309,6 +314,7 @@ namespace FxFixGateway.Application.Services
                     Tenor = tenor,
                     Cut = cut,
                     Strategy = strategy,
+                    Delta = delta,
                     MdEntryType = e.MdEntryType,
                     PositionNo = e.PositionNo!.Value,
                     Price = e.Price,
@@ -336,6 +342,14 @@ namespace FxFixGateway.Application.Services
             "B" => "Butterfly",
             _ => optionStrategy
         };
+
+        // TPICAP DeltaType (tag 6008): "0"=AllPitIncludingTenDeltaPit, "1"=TenDeltaPit.
+        // Straddle är ATM. RR/BF: 6008=1 → 10D, annars 25D.
+        private static string? TpicapDeltaToCanonical(string? optionStrategy, string? deltaType)
+        {
+            if (optionStrategy == "2") return "ATM";   // Straddle
+            return deltaType == "1" ? "10D" : "25D";
+        }
 
         private static List<ActiveMarketBookEntry> BuildBookEntries(MarketDataSnapshot snapshot, long snapshotId)
         {

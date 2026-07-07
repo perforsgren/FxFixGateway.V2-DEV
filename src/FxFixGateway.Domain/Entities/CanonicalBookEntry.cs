@@ -15,6 +15,7 @@ namespace FxFixGateway.Domain.Entities
         public string Tenor { get; set; } = string.Empty;
         public string Cut { get; set; } = string.Empty;
         public string Strategy { get; set; } = string.Empty;
+        public string? Delta { get; set; }                       // ATM | 25D | 10D
         public string MdEntryType { get; set; } = string.Empty;  // 0=Bid, 1=Ask
         public int PositionNo { get; set; }
         public decimal? Price { get; set; }

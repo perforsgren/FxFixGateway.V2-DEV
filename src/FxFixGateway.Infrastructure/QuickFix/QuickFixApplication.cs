@@ -877,10 +877,10 @@ namespace FxFixGateway.Infrastructure.QuickFix
 
         private static string BuildTpicapSecurityId(
             string? symbol, string? securityType, string? securityExchange,
-            string? tenorValue, string? optionStrategy)
+            string? tenorValue, string? optionStrategy, string? deltaType)
         {
             var pair = symbol?.Replace("/", "") ?? "";
-            return $"{pair}|{securityType ?? ""}|{securityExchange ?? ""}|{tenorValue ?? ""}|{optionStrategy ?? ""}";
+            return $"{pair}|{securityType ?? ""}|{securityExchange ?? ""}|{tenorValue ?? ""}|{optionStrategy ?? ""}|{deltaType ?? ""}";
         }
 
         private MarketDataSnapshotDto ParseTpicapSnapshotDto(QF.Message message, string rawMessage)
@@ -890,7 +890,8 @@ namespace FxFixGateway.Infrastructure.QuickFix
             var securityExchange = TryGetField(message, 207);
             var tenorValue = TryGetField(message, 6215);
             var optionStrategy = TryGetField(message, 9126);
-            var securityId = BuildTpicapSecurityId(symbol, securityType, securityExchange, tenorValue, optionStrategy);
+            var deltaType = TryGetField(message, 6008);
+            var securityId = BuildTpicapSecurityId(symbol, securityType, securityExchange, tenorValue, optionStrategy, deltaType);
 
             var entries = new List<MarketDataEntryDto>();
             var noMdEntries = TryGetIntField(message, 268) ?? 0;
@@ -944,6 +945,7 @@ namespace FxFixGateway.Infrastructure.QuickFix
                 SecurityType = securityType,
                 SecurityExchange = securityExchange,
                 TenorValue = tenorValue,
+                DeltaType = deltaType,
                 OptionStrategy = optionStrategy,
                 MaturityMonthYear = TryGetField(message, 200),
                 PremiumType = TryGetField(message, 6010),
@@ -962,6 +964,7 @@ namespace FxFixGateway.Infrastructure.QuickFix
             // TPICAP lägger dessa instrument-taggar i meddelandekroppen, inte i varje grupp.
             var bodyTenorValue = TryGetField(message, 6215);
             var bodyOptionStrategy = TryGetField(message, 9126);
+            var bodyDeltaType = TryGetField(message, 6008);
 
             for (int i = 1; i <= noMdEntries; i++)
             {
@@ -974,13 +977,14 @@ namespace FxFixGateway.Infrastructure.QuickFix
                     var securityType = TryGetField(entryGroup, 167);
                     var securityExchange = TryGetField(entryGroup, 207);
 
-                    // 6215 och 9126 finns i meddelandekroppen i TPICAP 35=X, inte i gruppen.
+                    // 6215, 9126 och 6008 finns i meddelandekroppen i TPICAP 35=X, inte i gruppen.
                     // Prova gruppen först (framtidssäkert), fall back på kroppen.
                     var tenorValue = TryGetField(entryGroup, 6215) ?? bodyTenorValue;
                     var optionStrategy = TryGetField(entryGroup, 9126) ?? bodyOptionStrategy;
+                    var deltaType = TryGetField(entryGroup, 6008) ?? bodyDeltaType;
 
                     var securityId = BuildTpicapSecurityId(
-                        symbol, securityType, securityExchange, tenorValue, optionStrategy);
+                        symbol, securityType, securityExchange, tenorValue, optionStrategy, deltaType);
 
                     // 270/271 ligger också i meddelandekroppen för TPICAP 35=X.
                     decimal? price = null;
@@ -1008,6 +1012,7 @@ namespace FxFixGateway.Infrastructure.QuickFix
                         Tenor = tenorValue,
                         Cut = TpicapCutToCanonical(securityExchange),
                         Strategy = TpicapStrategyToCanonical(optionStrategy),
+                        Delta = TpicapDeltaToCanonical(optionStrategy, deltaType),
                         MdUpdateAction = TryGetField(entryGroup, 279) ?? "0",
                         MdEntryType = TryGetField(entryGroup, 269),
                         Price = price,
@@ -1045,5 +1050,15 @@ namespace FxFixGateway.Infrastructure.QuickFix
             "B" => "Butterfly",
             _ => optionStrategy
         };
+
+        // TPICAP DeltaType (tag 6008): "0"=AllPitIncludingTenDeltaPit, "1"=TenDeltaPit.
+        // Straddle är ATM → delta är inte tillämpligt. RR/BF: 6008=1 → 10D, annars 25D.
+        // ⚠ Verifiera mot live 35=X att standard-pit (0) verkligen är 25D.
+        private static string? TpicapDeltaToCanonical(string? optionStrategy, string? deltaType)
+        {
+            if (optionStrategy == "2") return "ATM";   // Straddle
+            return deltaType == "1" ? "10D" : "25D";
+        }
+
     }
 }

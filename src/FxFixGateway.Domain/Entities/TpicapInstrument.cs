@@ -20,6 +20,7 @@ namespace FxFixGateway.Domain.Entities
         public string? Tenor { get; set; }  // = TenorValue
         public string? Cut { get; set; }  // härled ur SecurityExchange
         public string? Strategy { get; set; }  // härled ur OptionStrategy
+        public string? Delta { get; set; }  // härled ur DeltaType (ATM/25D/10D)
         public DateTime DiscoveredUtc { get; set; }
         public DateTime UpdatedUtc { get; set; }
     }

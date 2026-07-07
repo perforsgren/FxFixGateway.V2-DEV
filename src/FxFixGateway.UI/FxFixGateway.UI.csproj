@@ -10,6 +10,13 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <Compile Remove="Behaviors\**" />
+    <EmbeddedResource Remove="Behaviors\**" />
+    <None Remove="Behaviors\**" />
+    <Page Remove="Behaviors\**" />
+  </ItemGroup>
+
+  <ItemGroup>
     <None Remove="appsettings.json" />
     <None Remove="Resources\app.ico" />
   </ItemGroup>
@@ -42,10 +49,6 @@
     <ProjectReference Include="..\FxFixGateway.Application\FxFixGateway.Application.csproj" />
     <ProjectReference Include="..\FxFixGateway.Domain\FxFixGateway.Domain.csproj" />
     <ProjectReference Include="..\FxFixGateway.Infrastructure\FxFixGateway.Infrastructure.csproj" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <Folder Include="Behaviors\" />
   </ItemGroup>
 
   <ItemGroup>

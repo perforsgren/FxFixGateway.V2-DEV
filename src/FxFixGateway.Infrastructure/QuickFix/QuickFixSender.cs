@@ -91,8 +91,9 @@ namespace FxFixGateway.Infrastructure.QuickFix
         /// <summary>
         /// Probe: skickar en fullständig MarketDataRequest (35=V) för FXOHUB.
         /// Till skillnad från Volbrokers tunna 35=V namnger denna symbolerna explicit.
-        /// Endast för diagnostik — inget persisteras (FXOHUB-sessionen är inte i
-        /// MarketDataService.MarketDataSessions).
+        /// För varje symbol begärs tre strategier: Straddle (ATM), Risk Reversal och
+        /// Butterfly. RR/BF begärs med DeltaType=0 (AllPitIncludingTenDeltaPit) så att
+        /// både 25D- och 10D-pit levereras.
         /// </summary>
         public void SendMarketDataRequestProbe(string sessionKey, IEnumerable<string> symbols)
         {
@@ -108,6 +109,15 @@ namespace FxFixGateway.Infrastructure.QuickFix
                 _logger.LogWarning("[{Session}] 35=V probe called with no symbols", sessionKey);
                 return;
             }
+
+            // (OptionStrategy 9126, DeltaType 6008|null). Straddle=ATM → ingen delta-pit.
+            // RR/BF med 6008=0 (AllPitIncludingTenDeltaPit) → inkluderar 10D-pit.
+            var strategySpecs = new (string OptionStrategy, string? DeltaType)[]
+            {
+                ("2", null),  // Straddle (ATM)
+                ("4", "0"),   // Risk Reversal
+                ("B", "0"),   // Butterfly
+            };
 
             try
             {
@@ -138,24 +148,29 @@ namespace FxFixGateway.Infrastructure.QuickFix
                 offerGroup.SetField(new QF.Fields.MDEntryType('1')); // 1 = Offer/Ask
                 msg.AddGroup(offerGroup);
 
-                // 146 NoRelatedSym – instrumenten vi vill prenumerera på
-                msg.SetField(new QF.Fields.NoRelatedSym(symbolList.Count));
+                // 146 NoRelatedSym – en grupp per (symbol × strategi)
+                msg.SetField(new QF.Fields.NoRelatedSym(symbolList.Count * strategySpecs.Length));
                 foreach (var symbol in symbolList)
                 {
-                    var symGroup = new QF.Group(146, 55);
-                    symGroup.SetField(new QF.Fields.Symbol(symbol));              // 55
-                    symGroup.SetField(new QF.Fields.SecurityType("FOR"));          // 167 - Foreign Exchange Contract
-                    symGroup.SetField(new QF.Fields.SecurityExchange("1000NYK"));  // 207 - NY cut 10:00
-                    symGroup.SetField(new QF.Fields.StringField(6215, "ALL"));            // TenorValue - alla tenorer
-                    symGroup.SetField(new QF.Fields.StringField(9126, "2"));              // OptionStrategy - Straddle ATM
-                    msg.AddGroup(symGroup);
+                    foreach (var (optionStrategy, deltaType) in strategySpecs)
+                    {
+                        var symGroup = new QF.Group(146, 55);
+                        symGroup.SetField(new QF.Fields.Symbol(symbol));              // 55
+                        symGroup.SetField(new QF.Fields.SecurityType("FOR"));          // 167 - Foreign Exchange Contract
+                        symGroup.SetField(new QF.Fields.SecurityExchange("1000NYK"));  // 207 - NY cut 10:00
+                        symGroup.SetField(new QF.Fields.StringField(6215, "ALL"));            // TenorValue - alla tenorer
+                        symGroup.SetField(new QF.Fields.StringField(9126, optionStrategy));   // OptionStrategy
+                        if (deltaType != null)
+                            symGroup.SetField(new QF.Fields.StringField(6008, deltaType));    // DeltaType
+                        msg.AddGroup(symGroup);
+                    }
                 }
 
                 QF.Session.SendToTarget(msg, sessionId);
 
                 _logger.LogInformation(
-                    "[{Session}] 35=V probe sent for {Count} symbol(s): [{Symbols}]",
-                    sessionKey, symbolList.Count, string.Join(", ", symbolList));
+                    "[{Session}] 35=V probe sent for {Count} symbol(s) × {Strat} strategies: [{Symbols}]",
+                    sessionKey, symbolList.Count, strategySpecs.Length, string.Join(", ", symbolList));
             }
             catch (Exception ex)
             {

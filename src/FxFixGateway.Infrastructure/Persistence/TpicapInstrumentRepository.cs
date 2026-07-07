@@ -23,12 +23,12 @@ namespace FxFixGateway.Infrastructure.Persistence
                     (session_key, security_id, symbol, currency_pair, security_type,
                      security_exchange, tenor_value, option_strategy, maturity_month_year,
                      premium_type, delivery_type, delta_basis, premium_ccy,
-                     tenor, cut, strategy, discovered_utc)
+                     tenor, cut, strategy, delta, discovered_utc)
                 VALUES
                     (@SessionKey, @SecurityId, @Symbol, @CurrencyPair, @SecurityType,
                      @SecurityExchange, @TenorValue, @OptionStrategy, @MaturityMonthYear,
                      @PremiumType, @DeliveryType, @DeltaBasis, @PremiumCcy,
-                     @Tenor, @Cut, @Strategy, @DiscoveredUtc)
+                     @Tenor, @Cut, @Strategy, @Delta, @DiscoveredUtc)
                 ON DUPLICATE KEY UPDATE
                     symbol              = VALUES(symbol),
                     currency_pair       = VALUES(currency_pair),
@@ -44,6 +44,7 @@ namespace FxFixGateway.Infrastructure.Persistence
                     tenor               = VALUES(tenor),
                     cut                 = VALUES(cut),
                     strategy            = VALUES(strategy),
+                    delta               = VALUES(delta),
                     updated_utc         = CURRENT_TIMESTAMP(3);";
 
             try
@@ -67,6 +68,7 @@ namespace FxFixGateway.Infrastructure.Persistence
                 cmd.Parameters.AddWithValue("@Tenor", (object?)instrument.Tenor ?? DBNull.Value);
                 cmd.Parameters.AddWithValue("@Cut", (object?)instrument.Cut ?? DBNull.Value);
                 cmd.Parameters.AddWithValue("@Strategy", (object?)instrument.Strategy ?? DBNull.Value);
+                cmd.Parameters.AddWithValue("@Delta", (object?)instrument.Delta ?? DBNull.Value);
                 cmd.Parameters.AddWithValue("@DiscoveredUtc", instrument.DiscoveredUtc);
                 await cmd.ExecuteNonQueryAsync();
             }
@@ -83,7 +85,7 @@ namespace FxFixGateway.Infrastructure.Persistence
                 SELECT id, session_key, security_id, symbol, currency_pair, security_type,
                        security_exchange, tenor_value, option_strategy, maturity_month_year,
                        premium_type, delivery_type, delta_basis, premium_ccy,
-                       tenor, cut, strategy, discovered_utc, updated_utc
+                       tenor, cut, strategy, delta, discovered_utc, updated_utc
                 FROM fxvol.tpicap_instruments
                 WHERE session_key = @SessionKey AND security_id = @SecurityId
                 LIMIT 1;";
@@ -117,6 +119,7 @@ namespace FxFixGateway.Infrastructure.Persistence
                         Tenor = reader.IsDBNull(reader.GetOrdinal("tenor")) ? null : reader.GetString("tenor"),
                         Cut = reader.IsDBNull(reader.GetOrdinal("cut")) ? null : reader.GetString("cut"),
                         Strategy = reader.IsDBNull(reader.GetOrdinal("strategy")) ? null : reader.GetString("strategy"),
+                        Delta = reader.IsDBNull(reader.GetOrdinal("delta")) ? null : reader.GetString("delta"),
                         DiscoveredUtc = reader.GetDateTime("discovered_utc"),
                         UpdatedUtc = reader.GetDateTime("updated_utc"),
                     };

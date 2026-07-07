@@ -18,6 +18,7 @@ namespace FxFixGateway.Domain.ValueObjects
         public string? SecurityExchange { get; init; }  // tag 207
         public string? TenorValue { get; init; }  // tag 6215
         public string? OptionStrategy { get; init; }  // tag 9126
+        public string? DeltaType { get; init; }  // tag 6008 (0=AllPit/25D, 1=TenDeltaPit/10D)
         public string? MaturityMonthYear { get; init; }  // tag 200
         public string? PremiumType { get; init; }  // tag 6010
         public string? DeliveryType { get; init; }  // tag 6011
@@ -52,6 +53,7 @@ namespace FxFixGateway.Domain.ValueObjects
         public string? Tenor { get; init; }
         public string? Cut { get; init; }
         public string? Strategy { get; init; }
+        public string? Delta { get; init; }                 // kanonisk: ATM/25D/10D (ur tag 6008)
         public string MdUpdateAction { get; init; } = "0";   // tag 279: 0=New,1=Change,2=Delete
         public string? MdEntryType { get; init; }           // tag 269
         public decimal? Price { get; init; }
@@ -59,4 +61,5 @@ namespace FxFixGateway.Domain.ValueObjects
         public int? PositionNo { get; init; }
         public string? Originator { get; init; }
     }
+
 }
