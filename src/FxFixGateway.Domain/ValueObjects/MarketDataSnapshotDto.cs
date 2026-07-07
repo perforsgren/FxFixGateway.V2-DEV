@@ -62,11 +62,13 @@ namespace FxFixGateway.Domain.ValueObjects
         public string? OptionStrategy { get; init; }        // tag 9126
         public string? DeltaType { get; init; }             // tag 6008
         public string MdUpdateAction { get; init; } = "0";   // tag 279: 0=New,1=Change,2=Delete
-        public string? MdEntryType { get; init; }           // tag 269
+        public string? MdEntryType { get; init; }           // tag 269: 0=Bid,1=Ask,2=Trade,J=EmptyBook
+        public string? MdEntryId { get; init; }             // tag 278 (per-entry-identitet)
+        public string? TradeCondition { get; init; }        // tag 277 (för trades)
         public decimal? Price { get; init; }
         public decimal? Size { get; init; }
-        public int? PositionNo { get; init; }
-        public string? Originator { get; init; }
+        public int? PositionNo { get; init; }               // härledd ur MDEntryID (278)
+        public string? Originator { get; init; }            // tag 284 DeskID (eget pris)
     }
 
 }

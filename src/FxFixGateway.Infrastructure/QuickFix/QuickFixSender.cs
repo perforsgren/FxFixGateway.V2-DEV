@@ -137,8 +137,8 @@ namespace FxFixGateway.Infrastructure.QuickFix
                 // 265 MDUpdateType: 1 = Incremental (krävs ofta tillsammans med 263=1)
                 msg.SetField(new QF.Fields.MDUpdateType(1));
 
-                // 267 NoMDEntryTypes – vilka entry-typer vi vill ha (Bid + Offer)
-                msg.SetField(new QF.Fields.NoMDEntryTypes(2));
+                // 267 NoMDEntryTypes – Bid + Offer + Trade
+                msg.SetField(new QF.Fields.NoMDEntryTypes(3));
 
                 var bidGroup = new QF.Group(267, 269);
                 bidGroup.SetField(new QF.Fields.MDEntryType('0')); // 0 = Bid
@@ -147,6 +147,10 @@ namespace FxFixGateway.Infrastructure.QuickFix
                 var offerGroup = new QF.Group(267, 269);
                 offerGroup.SetField(new QF.Fields.MDEntryType('1')); // 1 = Offer/Ask
                 msg.AddGroup(offerGroup);
+
+                var tradeGroup = new QF.Group(267, 269);
+                tradeGroup.SetField(new QF.Fields.MDEntryType('2')); // 2 = Trade
+                msg.AddGroup(tradeGroup);
 
                 // 146 NoRelatedSym – en grupp per (symbol × strategi)
                 msg.SetField(new QF.Fields.NoRelatedSym(symbolList.Count * strategySpecs.Length));

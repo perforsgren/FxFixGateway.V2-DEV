@@ -301,6 +301,79 @@ namespace FxFixGateway.Infrastructure.Persistence
                 await cmd.ExecuteNonQueryAsync();
             }
         }
+
+        public async Task UpsertIncrementalBookEntriesAsync(IReadOnlyList<ActiveMarketBookEntry> entries)
+        {
+            if (entries.Count == 0)
+                return;
+
+            // Ren upsert — INGEN deactivate-all. Varje entry identifieras av
+            // (security_id, session_key, md_entry_type, position_no) där position_no = MDEntryID.
+            const string upsertSql = @"
+                INSERT INTO fxvol.active_market_book
+                    (security_id, session_key, currency_pair, md_entry_type, position_no,
+                     price, size, originator, trader_id, quote_condition, is_active, snapshot_id, updated_utc)
+                VALUES
+                    (@SecurityId, @SessionKey, @CurrencyPair, @MdEntryType, @PositionNo,
+                     @Price, @Size, @Originator, @TraderId, @QuoteCondition, 1, @SnapshotId, @UpdatedUtc)
+                ON DUPLICATE KEY UPDATE
+                    is_active       = 1,
+                    snapshot_id     = VALUES(snapshot_id),
+                    currency_pair   = VALUES(currency_pair),
+                    originator      = VALUES(originator),
+                    trader_id       = VALUES(trader_id),
+                    quote_condition = VALUES(quote_condition),
+                    updated_utc     = IF(
+                        price <> VALUES(price) OR size <> VALUES(size),
+                        VALUES(updated_utc),
+                        updated_utc
+                    ),
+                    price           = VALUES(price),
+                    size            = VALUES(size);";
+
+            await using var connection = new MySqlConnection(_connectionString);
+            await connection.OpenAsync();
+
+            foreach (var entry in entries)
+            {
+                await using var cmd = new MySqlCommand(upsertSql, connection);
+                cmd.Parameters.AddWithValue("@SecurityId", entry.SecurityId);
+                cmd.Parameters.AddWithValue("@SessionKey", entry.SessionKey);
+                cmd.Parameters.AddWithValue("@CurrencyPair", (object?)entry.CurrencyPair ?? DBNull.Value);
+                cmd.Parameters.AddWithValue("@MdEntryType", entry.MdEntryType);
+                cmd.Parameters.AddWithValue("@PositionNo", entry.PositionNo);
+                cmd.Parameters.AddWithValue("@Price", (object?)entry.Price ?? DBNull.Value);
+                cmd.Parameters.AddWithValue("@Size", (object?)entry.Size ?? DBNull.Value);
+                cmd.Parameters.AddWithValue("@Originator", (object?)entry.Originator ?? DBNull.Value);
+                cmd.Parameters.AddWithValue("@TraderId", (object?)entry.TraderId ?? DBNull.Value);
+                cmd.Parameters.AddWithValue("@QuoteCondition", (object?)entry.QuoteCondition?.Truncate(50) ?? DBNull.Value);
+                cmd.Parameters.AddWithValue("@SnapshotId", entry.SnapshotId);
+                cmd.Parameters.AddWithValue("@UpdatedUtc", entry.UpdatedUtc);
+                await cmd.ExecuteNonQueryAsync();
+            }
+        }
+
+        public async Task DeleteBookEntryAsync(string sessionKey, string securityId, string mdEntryType, int positionNo)
+        {
+            const string sql = @"
+                UPDATE fxvol.active_market_book
+                SET    is_active   = 0,
+                       updated_utc = @UpdatedUtc
+                WHERE  session_key   = @SessionKey
+                  AND  security_id   = @SecurityId
+                  AND  md_entry_type = @MdEntryType
+                  AND  position_no   = @PositionNo;";
+
+            await using var connection = new MySqlConnection(_connectionString);
+            await connection.OpenAsync();
+            await using var cmd = new MySqlCommand(sql, connection);
+            cmd.Parameters.AddWithValue("@SessionKey", sessionKey);
+            cmd.Parameters.AddWithValue("@SecurityId", securityId);
+            cmd.Parameters.AddWithValue("@MdEntryType", mdEntryType);
+            cmd.Parameters.AddWithValue("@PositionNo", positionNo);
+            cmd.Parameters.AddWithValue("@UpdatedUtc", DateTime.UtcNow);
+            await cmd.ExecuteNonQueryAsync();
+        }
     }
 
     internal static class StringExtensions

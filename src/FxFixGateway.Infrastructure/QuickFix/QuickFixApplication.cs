@@ -924,7 +924,7 @@ namespace FxFixGateway.Infrastructure.QuickFix
                         Size = size,
                         QuoteCondition = TryGetField(entryGroup, 276),
                         PositionNo = TryGetIntField(entryGroup, 290),
-                        Originator = TryGetField(entryGroup, 282),
+                        Originator = TryGetField(entryGroup, 284),   // DeskID (var 282, finns ej i FXOhub)
                     });
                 }
                 catch (Exception ex)
@@ -978,7 +978,6 @@ namespace FxFixGateway.Infrastructure.QuickFix
                     var securityExchange = TryGetField(entryGroup, 207);
 
                     // 6215, 9126 och 6008 finns i meddelandekroppen i TPICAP 35=X, inte i gruppen.
-                    // Prova gruppen först (framtidssäkert), fall back på kroppen.
                     var tenorValue = TryGetField(entryGroup, 6215) ?? bodyTenorValue;
                     var optionStrategy = TryGetField(entryGroup, 9126) ?? bodyOptionStrategy;
                     var deltaType = TryGetField(entryGroup, 6008) ?? bodyDeltaType;
@@ -986,7 +985,7 @@ namespace FxFixGateway.Infrastructure.QuickFix
                     var securityId = BuildTpicapSecurityId(
                         symbol, securityType, securityExchange, tenorValue, optionStrategy, deltaType);
 
-                    // 270/271 ligger också i meddelandekroppen för TPICAP 35=X.
+                    // 270/271 ligger i meddelandekroppen för TPICAP 35=X (grupp-först, kropp-fallback).
                     decimal? price = null;
                     var priceStr = entryGroup.IsSetField(270) ? entryGroup.GetString(270)
                                  : (message.IsSetField(270) ? message.GetString(270) : null);
@@ -1005,6 +1004,12 @@ namespace FxFixGateway.Infrastructure.QuickFix
                             System.Globalization.CultureInfo.InvariantCulture, out var s))
                         size = s;
 
+                    // MDEntryID (278) i gruppen; DeskID (284) i kroppen (eget pris).
+                    var mdEntryId = entryGroup.IsSetField(278) ? entryGroup.GetString(278)
+                                  : (message.IsSetField(278) ? message.GetString(278) : null);
+                    var deskId = entryGroup.IsSetField(284) ? entryGroup.GetString(284)
+                               : (message.IsSetField(284) ? message.GetString(284) : null);
+
                     result.Add(new TpicapIncrementalEntryDto
                     {
                         SecurityId = securityId,
@@ -1021,10 +1026,16 @@ namespace FxFixGateway.Infrastructure.QuickFix
                         DeltaType = deltaType,
                         MdUpdateAction = TryGetField(entryGroup, 279) ?? "0",
                         MdEntryType = TryGetField(entryGroup, 269),
+                        MdEntryId = mdEntryId,
+                        TradeCondition = TryGetField(entryGroup, 277),
+                        // Ingen tag 290 — MDEntryID är per-entry-identiteten. Heltalsdelen
+                        // blir position_no så konkurrerande quotes inte kolliderar och
+                        // en delete kan träffa exakt rätt entry.
+                        PositionNo = ParseMdEntryIdToPosition(mdEntryId),
                         Price = price,
                         Size = size,
-                        PositionNo = TryGetIntField(entryGroup, 290) ?? 1,
-                        Originator = TryGetField(entryGroup, 282),
+                        // Tag 284 DeskID = ägande desk, skickas bara för egna priser.
+                        Originator = deskId,
                     });
                 }
                 catch (Exception ex)
@@ -1035,6 +1046,20 @@ namespace FxFixGateway.Infrastructure.QuickFix
             }
 
             return result;
+        }
+
+        // TPICAP identifierar varje entry med MDEntryID (tag 278, t.ex. "6.0") och skickar
+        // aldrig tag 290. Heltalsdelen används som stabil position_no-diskriminator —
+        // det är en entry-identitet för TPICAP, inte en djup-ranking.
+        private static int ParseMdEntryIdToPosition(string? mdEntryId)
+        {
+            if (string.IsNullOrWhiteSpace(mdEntryId))
+                return 1;
+            if (decimal.TryParse(mdEntryId,
+                    System.Globalization.NumberStyles.Any,
+                    System.Globalization.CultureInfo.InvariantCulture, out var d))
+                return (int)d;
+            return Math.Abs(mdEntryId.GetHashCode()) % 1_000_000;
         }
 
         private static string? TpicapCutToCanonical(string? securityExchange) => securityExchange switch

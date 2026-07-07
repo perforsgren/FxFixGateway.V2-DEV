@@ -164,5 +164,80 @@ namespace FxFixGateway.Infrastructure.Persistence
             IsActive = r.GetBoolean("is_active"),
             UpdatedUtc = r.GetDateTime("updated_utc"),
         };
+
+        public async Task UpsertIncrementalEntriesAsync(IReadOnlyList<CanonicalBookEntry> entries)
+        {
+            if (entries.Count == 0) return;
+
+            // Ren upsert — ingen deactivate-all. Nyckel: (venue, session_key, security_id,
+            // md_entry_type, position_no) där position_no = MDEntryID för TPICAP.
+            const string upsert = @"
+                INSERT INTO fxvol.canonical_market_book
+                    (venue, session_key, security_id, currency_pair, tenor, cut, strategy, delta,
+                     md_entry_type, position_no, price, size, originator, is_active, updated_utc)
+                VALUES
+                    (@Venue, @SessionKey, @SecurityId, @CurrencyPair, @Tenor, @Cut, @Strategy, @Delta,
+                     @MdEntryType, @PositionNo, @Price, @Size, @Originator, 1, @UpdatedUtc)
+                ON DUPLICATE KEY UPDATE
+                    is_active     = 1,
+                    currency_pair = VALUES(currency_pair),
+                    tenor         = VALUES(tenor),
+                    cut           = VALUES(cut),
+                    strategy      = VALUES(strategy),
+                    delta         = VALUES(delta),
+                    originator    = VALUES(originator),
+                    updated_utc   = IF(price <> VALUES(price) OR size <> VALUES(size),
+                                      VALUES(updated_utc), updated_utc),
+                    price         = VALUES(price),
+                    size          = VALUES(size);";
+
+            var now = DateTime.UtcNow;
+            await using var conn = new MySqlConnection(_connectionString);
+            await conn.OpenAsync();
+
+            foreach (var e in entries)
+            {
+                await using var cmd = new MySqlCommand(upsert, conn);
+                cmd.Parameters.AddWithValue("@Venue", e.Venue);
+                cmd.Parameters.AddWithValue("@SessionKey", e.SessionKey);
+                cmd.Parameters.AddWithValue("@SecurityId", e.SecurityId);
+                cmd.Parameters.AddWithValue("@CurrencyPair", e.CurrencyPair);
+                cmd.Parameters.AddWithValue("@Tenor", e.Tenor);
+                cmd.Parameters.AddWithValue("@Cut", e.Cut);
+                cmd.Parameters.AddWithValue("@Strategy", e.Strategy);
+                cmd.Parameters.AddWithValue("@Delta", (object?)e.Delta ?? DBNull.Value);
+                cmd.Parameters.AddWithValue("@MdEntryType", e.MdEntryType);
+                cmd.Parameters.AddWithValue("@PositionNo", e.PositionNo);
+                cmd.Parameters.AddWithValue("@Price", (object?)e.Price ?? DBNull.Value);
+                cmd.Parameters.AddWithValue("@Size", (object?)e.Size ?? DBNull.Value);
+                cmd.Parameters.AddWithValue("@Originator", (object?)e.Originator ?? DBNull.Value);
+                cmd.Parameters.AddWithValue("@UpdatedUtc", now);
+                await cmd.ExecuteNonQueryAsync();
+            }
+        }
+
+        public async Task DeactivateEntryAsync(string venue, string sessionKey, string securityId,
+            string mdEntryType, int positionNo)
+        {
+            const string sql = @"
+                UPDATE fxvol.canonical_market_book
+                SET    is_active = 0, updated_utc = @Now
+                WHERE  venue         = @Venue
+                  AND  session_key   = @SessionKey
+                  AND  security_id   = @SecurityId
+                  AND  md_entry_type = @MdEntryType
+                  AND  position_no   = @PositionNo;";
+
+            await using var conn = new MySqlConnection(_connectionString);
+            await conn.OpenAsync();
+            await using var cmd = new MySqlCommand(sql, conn);
+            cmd.Parameters.AddWithValue("@Venue", venue);
+            cmd.Parameters.AddWithValue("@SessionKey", sessionKey);
+            cmd.Parameters.AddWithValue("@SecurityId", securityId);
+            cmd.Parameters.AddWithValue("@MdEntryType", mdEntryType);
+            cmd.Parameters.AddWithValue("@PositionNo", positionNo);
+            cmd.Parameters.AddWithValue("@Now", DateTime.UtcNow);
+            await cmd.ExecuteNonQueryAsync();
+        }
     }
 }

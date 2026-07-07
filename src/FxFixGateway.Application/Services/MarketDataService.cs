@@ -106,26 +106,63 @@ namespace FxFixGateway.Application.Services
             if (entries.Count == 0) return;
 
             var now = DateTime.UtcNow;
-            var upsert = new List<ActiveMarketBookEntry>();
-            var deleteSecurityIds = new HashSet<string>();
+            var bookUpserts = new List<ActiveMarketBookEntry>();
+            var canonicalUpserts = new List<CanonicalBookEntry>();
+            var deletes = new List<(string SecurityId, string MdEntryType, int PositionNo)>();
+            var wholeBookClears = new HashSet<string>();   // 269=J Empty Book
+            var trades = new List<MarketTrade>();
 
             foreach (var e in entries)
             {
-                if (e.MdUpdateAction == "2") // Delete
+                // Trade prints (269=2) → market_trades, aldrig till boken.
+                if (e.MdEntryType == "2")
                 {
-                    deleteSecurityIds.Add(e.SecurityId);
+                    trades.Add(new MarketTrade
+                    {
+                        SecurityId = e.SecurityId,
+                        SessionKey = sessionKey,
+                        CurrencyPair = e.CurrencyPair,
+                        Tenor = e.Tenor,
+                        Cut = e.Cut,
+                        Strategy = e.Strategy,
+                        Delta = e.Delta,
+                        Price = e.Price,
+                        Size = e.Size,
+                        TradeCondition = e.TradeCondition,
+                        SnapshotId = 0,
+                        ReceivedUtc = now
+                    });
                     continue;
                 }
 
-                if (!e.PositionNo.HasValue || string.IsNullOrEmpty(e.MdEntryType))
+                // Empty Book (269=J) → rensa hela instrumentets bok.
+                if (e.MdEntryType == "J")
+                {
+                    wholeBookClears.Add(e.SecurityId);
+                    continue;
+                }
+
+                // Endast Bid/Ask lever i boken (hoppa B=Trade Volume, C=Open Interest, m.fl.).
+                if (e.MdEntryType != "0" && e.MdEntryType != "1")
                     continue;
 
-                upsert.Add(new ActiveMarketBookEntry
+                if (!e.PositionNo.HasValue)
+                    continue;
+
+                // Delete (279=2) — en specifik entry (MDEntryID → position_no).
+                if (e.MdUpdateAction == "2")
+                {
+                    deletes.Add((e.SecurityId, e.MdEntryType!, e.PositionNo.Value));
+                    continue;
+                }
+
+                // New/Change (279=0/1) — upsert en entry (ingen deactivate-all).
+                bookUpserts.Add(new ActiveMarketBookEntry
                 {
                     SecurityId = e.SecurityId,
                     SessionKey = sessionKey,
                     CurrencyPair = e.CurrencyPair,
-                    MdEntryType = e.MdEntryType,
+                    MdEntryType = e.MdEntryType!,
                     PositionNo = e.PositionNo.Value,
                     Price = e.Price,
                     Size = e.Size,
@@ -133,21 +170,59 @@ namespace FxFixGateway.Application.Services
                     SnapshotId = 0,
                     UpdatedUtc = now
                 });
+
+                if (e.CurrencyPair != null && e.Tenor != null && e.Cut != null && e.Strategy != null)
+                {
+                    canonicalUpserts.Add(new CanonicalBookEntry
+                    {
+                        Venue = "TPICAP",
+                        SessionKey = sessionKey,
+                        SecurityId = e.SecurityId,
+                        CurrencyPair = e.CurrencyPair!,
+                        Tenor = e.Tenor!,
+                        Cut = e.Cut!,
+                        Strategy = e.Strategy!,
+                        Delta = e.Delta,
+                        MdEntryType = e.MdEntryType!,
+                        PositionNo = e.PositionNo.Value,
+                        Price = e.Price,
+                        Size = e.Size,
+                        Originator = e.Originator,
+                        IsActive = true,
+                        UpdatedUtc = now
+                    });
+                }
             }
 
-            foreach (var secId in deleteSecurityIds)
+            // Empty Book → rensa hela instrumentet (båda böckerna).
+            foreach (var secId in wholeBookClears)
             {
                 await _snapshotRepo.DeleteBookEntriesAsync(sessionKey, secId);
                 await _canonicalRepo.DeactivateEntriesAsync("TPICAP", sessionKey, secId);
             }
 
-            if (upsert.Count > 0)
-                await _snapshotRepo.UpsertBookEntriesAsync(upsert);
+            // Entry-nivå deletes (en MDEntryID i taget — nollar inte hela instrumentet).
+            foreach (var d in deletes)
+            {
+                await _snapshotRepo.DeleteBookEntryAsync(sessionKey, d.SecurityId, d.MdEntryType, d.PositionNo);
+                await _canonicalRepo.DeactivateEntryAsync("TPICAP", sessionKey, d.SecurityId, d.MdEntryType, d.PositionNo);
+            }
 
-            // Dimensionen: upserta tpicap_instruments för instrument som bara syns i 35=X
-            // (t.ex. 10D-pit). Canonical-only → rör inte raw-kolumner som 35=W äger.
+            // Entry-nivå upserts (ren upsert — konkurrerande quotes bevaras).
+            if (bookUpserts.Count > 0)
+                await _snapshotRepo.UpsertIncrementalBookEntriesAsync(bookUpserts);
+            if (canonicalUpserts.Count > 0)
+                await _canonicalRepo.UpsertIncrementalEntriesAsync(canonicalUpserts);
+
+            // Trades → market_trades.
+            if (trades.Count > 0)
+                await _snapshotRepo.InsertTradesAsync(trades);
+
+            // Dimensionen: tpicap_instruments för instrument som bara syns i 35=X (variant E).
             var instruments = entries
-                .Where(e => e.MdUpdateAction != "2" && !string.IsNullOrEmpty(e.SecurityId))
+                .Where(e => e.MdUpdateAction != "2"
+                         && (e.MdEntryType == "0" || e.MdEntryType == "1")
+                         && !string.IsNullOrEmpty(e.SecurityId))
                 .GroupBy(e => e.SecurityId)
                 .Select(g => g.First())
                 .Select(e => new TpicapInstrument
@@ -167,41 +242,12 @@ namespace FxFixGateway.Application.Services
                     DiscoveredUtc = now,
                 })
                 .ToList();
-
             foreach (var instrument in instruments)
                 await _tpicapRepo.UpsertCanonicalAsync(instrument);
 
-            // Canonical: bara entries med full kanonisk identitet (DTO bär den).
-            var canonical = entries
-                .Where(e => e.MdUpdateAction != "2"
-                         && e.PositionNo.HasValue && !string.IsNullOrEmpty(e.MdEntryType)
-                         && e.CurrencyPair != null && e.Tenor != null
-                         && e.Cut != null && e.Strategy != null)
-                .Select(e => new CanonicalBookEntry
-                {
-                    Venue = "TPICAP",
-                    SessionKey = sessionKey,
-                    SecurityId = e.SecurityId,
-                    CurrencyPair = e.CurrencyPair!,
-                    Tenor = e.Tenor!,
-                    Cut = e.Cut!,
-                    Strategy = e.Strategy!,
-                    Delta = e.Delta,
-                    MdEntryType = e.MdEntryType!,
-                    PositionNo = e.PositionNo!.Value,
-                    Price = e.Price,
-                    Size = e.Size,
-                    Originator = e.Originator,
-                    IsActive = true,
-                    UpdatedUtc = now
-                })
-                .ToList();
-            if (canonical.Count > 0)
-                await _canonicalRepo.UpsertEntriesAsync(canonical);
-
             _logger.LogDebug(
-                "[{Session}] 35=X processed: {UpsertCount} upsert, {DeleteCount} delete, {CanonCount} canonical",
-                sessionKey, upsert.Count, deleteSecurityIds.Count, canonical.Count);
+                "[{Session}] 35=X: {Upsert} upsert, {Delete} delete, {Trade} trade, {Clear} clear",
+                sessionKey, bookUpserts.Count, deletes.Count, trades.Count, wholeBookClears.Count);
         }
 
         private async Task ConsumeAsync(CancellationToken ct)

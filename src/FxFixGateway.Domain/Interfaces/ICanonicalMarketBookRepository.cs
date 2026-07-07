@@ -6,6 +6,19 @@ namespace FxFixGateway.Domain.Interfaces
     {
         Task UpsertEntriesAsync(IReadOnlyList<CanonicalBookEntry> entries);
         Task DeactivateEntriesAsync(string venue, string sessionKey, string securityId);
+
+        /// <summary>
+        /// Ren upsert av enskilda entries från 35=X — soft-deletar INTE övriga entries
+        /// för instrumentet (till skillnad från UpsertEntriesAsync).
+        /// </summary>
+        Task UpsertIncrementalEntriesAsync(IReadOnlyList<CanonicalBookEntry> entries);
+
+        /// <summary>
+        /// Soft-deletar EN entry (venue + security_id + sida + position_no) för 35=X Delete.
+        /// </summary>
+        Task DeactivateEntryAsync(string venue, string sessionKey, string securityId,
+            string mdEntryType, int positionNo);
+
         Task<IReadOnlyList<CanonicalBookEntry>> GetBookAsync(
             string currencyPair,
             string? tenor = null,
