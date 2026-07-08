@@ -112,10 +112,15 @@ namespace FxFixGateway.Application.Services
             var wholeBookClears = new HashSet<string>();   // 269=J Empty Book
             var trades = new List<MarketTrade>();
 
-            // Egna priser vars position_no kan ha ändrats mellan 35=W och 35=X (se
-            // DeactivateStaleOwnEntriesAsync-kommentaren). KeepPositionNo=-1 för deletes
-            // (inget nytt värde att bevara — hela den egna kvoten på den sidan är borta).
             var ownReconciliations = new List<(string SecurityId, string MdEntryType, string Originator, string? TraderId, int KeepPositionNo)>();
+
+            // (security_id, md_entry_type) som får granulär 35=X-aktivitet i den här
+            // batchen. 35=W skriver alltid Bid/Ask med position_no=1 (fallback, saknar
+            // MDEntryID). Så fort 35=X strömmar riktiga per-order-uppdateringar för en
+            // sida vet vi att den gamla aggregerade 35=W-platshållaren är inaktuell —
+            // annars kan den bli en spökrad som aldrig rensas förrän nästa 35=W
+            // (dvs nästa omkoppling), trots att alla individuella ordrar redan är borta.
+            var sidesTouchedByIncremental = new HashSet<(string SecurityId, string MdEntryType)>();
 
             foreach (var e in entries)
             {
@@ -166,6 +171,8 @@ namespace FxFixGateway.Application.Services
 
                 if (!e.PositionNo.HasValue)
                     continue;
+
+                sidesTouchedByIncremental.Add((e.SecurityId, e.MdEntryType!));
 
                 // Delete (279=2) — en specifik entry (MDEntryID → position_no).
                 if (e.MdUpdateAction == "2")
@@ -228,6 +235,16 @@ namespace FxFixGateway.Application.Services
                 await _canonicalRepo.DeactivateEntriesAsync("TPICAP", sessionKey, secId);
             }
 
+            // Rensa 35=W:s aggregerade platshållare (position_no=1) för varje sida som nu
+            // får granulär 35=X-aktivitet — INNAN dagens deletes/upserts körs, så att om
+            // en riktig hash råkar bli exakt 1 (extremt osannolikt) återaktiveras den
+            // korrekt av upsert-steget nedan.
+            foreach (var (secId, side) in sidesTouchedByIncremental)
+            {
+                await _snapshotRepo.DeleteBookEntryAsync(sessionKey, secId, side, 1);
+                await _canonicalRepo.DeactivateEntryAsync("TPICAP", sessionKey, secId, side, 1);
+            }
+
             // Entry-nivå deletes (en MDEntryID i taget — nollar inte hela instrumentet).
             foreach (var d in deletes)
             {
@@ -236,7 +253,7 @@ namespace FxFixGateway.Application.Services
             }
 
             // Reconciliation för egna priser vars position_no kan ha bytt schema
-            // (35=W-fallback=1 vs 35=X MDEntryID-trunkering) sedan förra gången.
+            // (35=W-fallback=1 vs 35=X MDEntryID-hash) sedan förra gången.
             foreach (var r in ownReconciliations)
             {
                 await _snapshotRepo.DeactivateStaleOwnEntriesAsync(

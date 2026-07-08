@@ -891,6 +891,7 @@ namespace FxFixGateway.Infrastructure.QuickFix
             var tenorValue = TryGetField(message, 6215);
             var optionStrategy = TryGetField(message, 9126);
             var deltaType = TryGetField(message, 6008);
+            var bodyTradeIndication = TryGetField(message, 6009);
             var securityId = BuildTpicapSecurityId(symbol, securityType, securityExchange, tenorValue, optionStrategy, deltaType);
 
             var entries = new List<MarketDataEntryDto>();
@@ -918,6 +919,7 @@ namespace FxFixGateway.Infrastructure.QuickFix
                         size = s;
 
                     var (deskOriginator, deskTraderId) = SplitTpicapDeskId(TryGetField(entryGroup, 284));
+                    var tradeIndication = TryGetField(entryGroup, 6009) ?? bodyTradeIndication;
 
                     entries.Add(new MarketDataEntryDto
                     {
@@ -925,7 +927,7 @@ namespace FxFixGateway.Infrastructure.QuickFix
                         Price = price,
                         Size = size,
                         QuoteCondition = TryGetField(entryGroup, 276),
-                        TradeCondition = TryGetField(entryGroup, 277),
+                        TradeCondition = TpicapTradeIndicationToCanonical(tradeIndication),
                         // TPICAP skickar aldrig tag 290 i 35=W. En entry per meddelande
                         // (top-of-book), så defaulta till nivå 1 — annars droppas raden
                         // av PositionNo.HasValue-grinden i BuildBookEntries/BuildCanonicalEntries.
@@ -978,6 +980,7 @@ namespace FxFixGateway.Infrastructure.QuickFix
             var bodyTenorValue = TryGetField(message, 6215);
             var bodyOptionStrategy = TryGetField(message, 9126);
             var bodyDeltaType = TryGetField(message, 6008);
+            var bodyTradeIndication = TryGetField(message, 6009);
 
             for (int i = 1; i <= noMdEntries; i++)
             {
@@ -1028,6 +1031,7 @@ namespace FxFixGateway.Infrastructure.QuickFix
                                    : (message.IsSetField(272) ? message.GetString(272) : null);
                     var entryTime = entryGroup.IsSetField(273) ? entryGroup.GetString(273)
                                    : (message.IsSetField(273) ? message.GetString(273) : null);
+                    var tradeIndication = TryGetField(entryGroup, 6009) ?? bodyTradeIndication;
 
                     result.Add(new TpicapIncrementalEntryDto
                     {
@@ -1046,7 +1050,7 @@ namespace FxFixGateway.Infrastructure.QuickFix
                         MdUpdateAction = TryGetField(entryGroup, 279) ?? "0",
                         MdEntryType = TryGetField(entryGroup, 269),
                         MdEntryId = mdEntryId,
-                        TradeCondition = TryGetField(entryGroup, 277),
+                        TradeCondition = TpicapTradeIndicationToCanonical(tradeIndication),
                         EntryDate = entryDate,
                         EntryTime = entryTime,
                         // Ingen tag 290 — MDEntryID är per-entry-identiteten. Heltalsdelen
@@ -1070,18 +1074,37 @@ namespace FxFixGateway.Infrastructure.QuickFix
             return result;
         }
 
-        // TPICAP identifierar varje entry med MDEntryID (tag 278, t.ex. "6.0") och skickar
-        // aldrig tag 290. Heltalsdelen används som stabil position_no-diskriminator —
-        // det är en entry-identitet för TPICAP, inte en djup-ranking.
+        // TPICAP identifierar varje entry med MDEntryID (tag 278, t.ex. "5.225"). Det ska
+        // ALDRIG tolkas numeriskt — det är en opak per-entry-identitet, inte ett pris.
+        // TPICAP:s UAT-miljö råkar sätta MDEntryID ≈ pris, vilket tidigare gjorde att en
+        // (int)-cast trunkerade OLIKA MDEntryID (t.ex. "5.225" och "5.2") till SAMMA
+        // position_no — en delete avsedd för en annans kvot på 5.2 träffade då och
+        // deaktiverade en egen, fortfarande aktiv kvot på 5.225.
+        //
+        // Hasha alltid hela strängen med en STABIL (icke-randomiserad) hash — INTE
+        // string.GetHashCode(), som är processrandomiserad i .NET (skydd mot
+        // hash-flooding) och därför ger olika värde för samma sträng efter en omstart
+        // av gatewayen, vilket skulle göra gamla rader föräldralösa vid varje omstart.
         private static int ParseMdEntryIdToPosition(string? mdEntryId)
         {
             if (string.IsNullOrWhiteSpace(mdEntryId))
                 return 1;
-            if (decimal.TryParse(mdEntryId,
-                    System.Globalization.NumberStyles.Any,
-                    System.Globalization.CultureInfo.InvariantCulture, out var d))
-                return (int)d;
-            return Math.Abs(mdEntryId.GetHashCode()) % 1_000_000;
+            return StableHash(mdEntryId);
+        }
+
+        private static int StableHash(string value)
+        {
+            unchecked
+            {
+                const uint fnvPrime = 16777619;
+                uint hash = 2166136261;
+                foreach (char c in value)
+                {
+                    hash ^= c;
+                    hash *= fnvPrime;
+                }
+                return (int)(hash % 1_000_000);
+            }
         }
 
         // TPICAP DeskID (tag 284) kombinerar desk och trader i en sträng, separerade av
@@ -1124,6 +1147,16 @@ namespace FxFixGateway.Infrastructure.QuickFix
             if (optionStrategy == "2") return "ATM";   // Straddle
             return deltaType == "1" ? "10D" : "25D";
         }
+
+        // TPICAP TradeIndication (tag 6009): "0"=GIVEN (sålt på bid), "1"=PAID (köpt på
+        // offer). Standard FX-mäklarterminologi. Matchar Volbrokers trade_condition-
+        // semantik (G=Given/sälj, P=Paid/köp) — se MarketTrade.cs.
+        private static string? TpicapTradeIndicationToCanonical(string? tradeIndication) => tradeIndication switch
+        {
+            "0" => "G",  // Given — sold on bid
+            "1" => "P",  // Paid — bought on offer
+            _ => tradeIndication
+        };
 
     }
 }
