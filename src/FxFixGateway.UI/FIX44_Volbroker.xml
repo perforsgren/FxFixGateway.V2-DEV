@@ -827,6 +827,14 @@
       <field name="MDEntryID" required="N" />
       <field name="MDEntryRefID" required="N" />
       <component name="Instrument" required="N" />
+	  <field name="TenorValue" required="N" />
+	  <field name="OptionStrategy" required="N" />
+	  <field name="DeltaType" required="N" />
+	  <field name="DeltaBasis" required="N" />
+	  <field name="PremiumCurrency" required="N" />
+	  <field name="PremiumType" required="N" />
+	  <field name="InstrumentDeliveryType" required="N" />
+	  <field name="DeliveryDate" required="N" />		
       <group name="NoUnderlyings" required="N">
         <component name="UnderlyingInstrument" required="N" />
       </group>
@@ -6894,6 +6902,14 @@
     <field number="956" name="LegInterestAccrualDate" type="LOCALMKTDATE" />
 
 	<field number="1023" name="MDPriceLevel" type="INT" />
+
+	<field number="6008" name="DeltaType" type="STRING" />
+	<field number="6010" name="PremiumType" type="INT" />
+	<field number="6011" name="InstrumentDeliveryType" type="INT" />
+	<field number="6215" name="TenorValue" type="STRING" />
+	<field number="9126" name="OptionStrategy" type="STRING" />
+	<field number="9128" name="DeltaBasis" type="PRICE" />
+	<field number="9129" name="PremiumCurrency" type="CURRENCY" />	  
 
     <!-- Volbroker custom fields used in TradeCaptureReport (AE) -->
     <field number="1903" name="TradeUSI" type="STRING" />

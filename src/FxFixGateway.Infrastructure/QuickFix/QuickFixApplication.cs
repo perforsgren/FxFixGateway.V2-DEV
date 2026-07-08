@@ -925,12 +925,19 @@ namespace FxFixGateway.Infrastructure.QuickFix
                         Price = price,
                         Size = size,
                         QuoteCondition = TryGetField(entryGroup, 276),
+                        TradeCondition = TryGetField(entryGroup, 277),
                         // TPICAP skickar aldrig tag 290 i 35=W. En entry per meddelande
                         // (top-of-book), så defaulta till nivå 1 — annars droppas raden
                         // av PositionNo.HasValue-grinden i BuildBookEntries/BuildCanonicalEntries.
                         PositionNo = TryGetIntField(entryGroup, 290) ?? 1,
                         Originator = deskOriginator,   // DeskID (284) desk-del
                         TraderId = deskTraderId,       // DeskID (284) trader-del
+                        // 272/273 krävs för att uq_trade_dedup i market_trades ska kunna
+                        // upptäcka att TPICAP återsänder samma historiska "senaste avslut"
+                        // vid varje ny prenumeration — utan riktigt datum/tid blir kolumnerna
+                        // NULL och MySQL:s unika index matchar aldrig (NULL <> NULL).
+                        EntryDate = TryGetField(entryGroup, 272),
+                        EntryTime = TryGetField(entryGroup, 273),
                     });
                 }
                 catch (Exception ex)
