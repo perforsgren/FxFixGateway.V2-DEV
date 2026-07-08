@@ -114,10 +114,14 @@ namespace FxFixGateway.Infrastructure.Persistence
                 }
 
                 // ── Trades inside the same transaction ──────────────────────────────
+                // INSERT IGNORE — samma skäl som InsertTradesAsync: TPICAP återsänder
+                // "senaste avslut" vid varje ny prenumeration/reconnect. Utan detta
+                // kraschar en dubblett hela transaktionen (snapshot + entries rullas
+                // också tillbaka, inte bara trade-raden).
                 if (trades.Count > 0)
                 {
                     const string tradeSql = @"
-                        INSERT INTO fxvol.market_trades
+                        INSERT IGNORE INTO fxvol.market_trades
                             (security_id, session_key, currency_pair, tenor, cut, strategy, delta,
                              price, size, trade_date, trade_time, trade_condition, snapshot_id, received_utc)
                         VALUES

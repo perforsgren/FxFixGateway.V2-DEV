@@ -375,13 +375,30 @@ namespace FxFixGateway.Application.Services
 
             var bookEntries = BuildBookEntries(snapshot, snapshotId);
             if (bookEntries.Count > 0)
+            {
                 await _snapshotRepo.UpsertBookEntriesAsync(bookEntries);
+            }
+            else
+            {
+                // Snapshoten hade dto.Entries.Count > 0 (t.ex. en enda Trade-entry) men
+                // INGA bid/ask kvar efter att BuildBookEntries filtrerat bort trades.
+                // Utan det här rensas aldrig en tidigare aktiv bid/ask som dragits tillbaka
+                // — 268=0-grenen ovan triggas bara när meddelandet är helt tomt, inte när
+                // det bara innehåller en trade-print.
+                await _snapshotRepo.DeleteBookEntriesAsync(sessionKey, dto.SecurityId!);
+            }
 
             var canonical = BuildCanonicalEntries(
                 venue, sessionKey, dto.SecurityId!,
                 currencyPair, tenor, cut, canonicalStrategy, canonicalDelta, product, snapshot.Entries);
             if (canonical.Count > 0)
+            {
                 await _canonicalRepo.UpsertEntriesAsync(canonical);
+            }
+            else
+            {
+                await _canonicalRepo.DeactivateEntriesAsync(venue, sessionKey, dto.SecurityId!);
+            }
         }
 
         private static List<CanonicalBookEntry> BuildCanonicalEntries(
