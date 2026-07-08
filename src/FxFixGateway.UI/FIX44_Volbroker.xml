@@ -808,6 +808,7 @@
   <field name="MDEntrySeller" required="N" />
   <field name="NumberOfOrders" required="N" />
   <field name="MDEntryPositionNo" required="N" />
+  <field name="MDPriceLevel" required="N" />
   <field name="Scope" required="N" />
   <field name="PriceDelta" required="N" />
   <field name="Text" required="N" />
@@ -862,6 +863,7 @@
       <field name="MDEntrySeller" required="N" />
       <field name="NumberOfOrders" required="N" />
       <field name="MDEntryPositionNo" required="N" />
+      <field name="MDPriceLevel" required="N" />
       <field name="Scope" required="N" />
       <field name="PriceDelta" required="N" />
       <field name="NetChgPrevDay" required="N" />
@@ -6890,7 +6892,8 @@
     <field number="954" name="Nested3PartySubIDType" type="INT" />
     <field number="955" name="LegContractSettlMonth" type="MONTHYEAR" />
     <field number="956" name="LegInterestAccrualDate" type="LOCALMKTDATE" />
-    
+
+	<field number="1023" name="MDPriceLevel" type="INT" />
 
     <!-- Volbroker custom fields used in TradeCaptureReport (AE) -->
     <field number="1903" name="TradeUSI" type="STRING" />

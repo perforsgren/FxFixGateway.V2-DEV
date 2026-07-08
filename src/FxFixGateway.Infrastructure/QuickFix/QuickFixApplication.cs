@@ -925,7 +925,10 @@ namespace FxFixGateway.Infrastructure.QuickFix
                         Price = price,
                         Size = size,
                         QuoteCondition = TryGetField(entryGroup, 276),
-                        PositionNo = TryGetIntField(entryGroup, 290),
+                        // TPICAP skickar aldrig tag 290 i 35=W. En entry per meddelande
+                        // (top-of-book), så defaulta till nivå 1 — annars droppas raden
+                        // av PositionNo.HasValue-grinden i BuildBookEntries/BuildCanonicalEntries.
+                        PositionNo = TryGetIntField(entryGroup, 290) ?? 1,
                         Originator = deskOriginator,   // DeskID (284) desk-del
                         TraderId = deskTraderId,       // DeskID (284) trader-del
                     });

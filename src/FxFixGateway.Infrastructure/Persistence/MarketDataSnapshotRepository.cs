@@ -268,8 +268,11 @@ namespace FxFixGateway.Infrastructure.Persistence
             if (trades.Count == 0)
                 return;
 
+            // INSERT IGNORE — TPICAP återsänder "senaste avslut" för en tenor vid varje
+            // ny prenumeration (t.ex. vid gateway-omstart), inte bara vid nya trades.
+            // uq_trade_dedup förhindrar att samma historiska trade dupliceras varje gång.
             const string sql = @"
-                INSERT INTO fxvol.market_trades
+                INSERT IGNORE INTO fxvol.market_trades
                     (security_id, session_key, currency_pair, tenor, cut, strategy, delta,
                      price, size, trade_date, trade_time, trade_condition, snapshot_id, received_utc)
                 VALUES
@@ -282,22 +285,22 @@ namespace FxFixGateway.Infrastructure.Persistence
             foreach (var trade in trades)
             {
                 await using var cmd = new MySqlCommand(sql, connection);
-                cmd.Parameters.AddWithValue("@SecurityId",     trade.SecurityId);
-                cmd.Parameters.AddWithValue("@SessionKey",     trade.SessionKey);
-                cmd.Parameters.AddWithValue("@CurrencyPair",   (object?)trade.CurrencyPair   ?? DBNull.Value);
-                cmd.Parameters.AddWithValue("@Tenor",          (object?)trade.Tenor          ?? DBNull.Value);
-                cmd.Parameters.AddWithValue("@Cut",            (object?)trade.Cut            ?? DBNull.Value);
-                cmd.Parameters.AddWithValue("@Strategy",       (object?)trade.Strategy       ?? DBNull.Value);
-                cmd.Parameters.AddWithValue("@Delta",          (object?)trade.Delta          ?? DBNull.Value);
-                cmd.Parameters.AddWithValue("@Price",          (object?)trade.Price          ?? DBNull.Value);
-                cmd.Parameters.AddWithValue("@Size",           (object?)trade.Size           ?? DBNull.Value);
-                cmd.Parameters.AddWithValue("@TradeDate",      trade.TradeDate.HasValue
+                cmd.Parameters.AddWithValue("@SecurityId", trade.SecurityId);
+                cmd.Parameters.AddWithValue("@SessionKey", trade.SessionKey);
+                cmd.Parameters.AddWithValue("@CurrencyPair", (object?)trade.CurrencyPair ?? DBNull.Value);
+                cmd.Parameters.AddWithValue("@Tenor", (object?)trade.Tenor ?? DBNull.Value);
+                cmd.Parameters.AddWithValue("@Cut", (object?)trade.Cut ?? DBNull.Value);
+                cmd.Parameters.AddWithValue("@Strategy", (object?)trade.Strategy ?? DBNull.Value);
+                cmd.Parameters.AddWithValue("@Delta", (object?)trade.Delta ?? DBNull.Value);
+                cmd.Parameters.AddWithValue("@Price", (object?)trade.Price ?? DBNull.Value);
+                cmd.Parameters.AddWithValue("@Size", (object?)trade.Size ?? DBNull.Value);
+                cmd.Parameters.AddWithValue("@TradeDate", trade.TradeDate.HasValue
                     ? (object)trade.TradeDate.Value.ToString("yyyy-MM-dd") : DBNull.Value);
-                cmd.Parameters.AddWithValue("@TradeTime",      trade.TradeTime.HasValue
+                cmd.Parameters.AddWithValue("@TradeTime", trade.TradeTime.HasValue
                     ? (object)trade.TradeTime.Value.ToString("HH:mm:ss.fff") : DBNull.Value);
                 cmd.Parameters.AddWithValue("@TradeCondition", (object?)trade.TradeCondition ?? DBNull.Value);
-                cmd.Parameters.AddWithValue("@SnapshotId",     trade.SnapshotId);
-                cmd.Parameters.AddWithValue("@ReceivedUtc",    trade.ReceivedUtc);
+                cmd.Parameters.AddWithValue("@SnapshotId", trade.SnapshotId);
+                cmd.Parameters.AddWithValue("@ReceivedUtc", trade.ReceivedUtc);
                 await cmd.ExecuteNonQueryAsync();
             }
         }
