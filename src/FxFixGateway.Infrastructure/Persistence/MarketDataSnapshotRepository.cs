@@ -381,6 +381,35 @@ namespace FxFixGateway.Infrastructure.Persistence
             cmd.Parameters.AddWithValue("@UpdatedUtc", DateTime.UtcNow);
             await cmd.ExecuteNonQueryAsync();
         }
+
+        public async Task DeactivateStaleOwnEntriesAsync(
+    string sessionKey, string securityId, string mdEntryType,
+    string originator, string? traderId, int keepPositionNo)
+        {
+            const string sql = @"
+                UPDATE fxvol.active_market_book
+                SET    is_active   = 0,
+                       updated_utc = @UpdatedUtc
+                WHERE  session_key   = @SessionKey
+                  AND  security_id   = @SecurityId
+                  AND  md_entry_type = @MdEntryType
+                  AND  originator    = @Originator
+                  AND  (trader_id = @TraderId OR (trader_id IS NULL AND @TraderId IS NULL))
+                  AND  position_no  <> @KeepPositionNo
+                  AND  is_active    = 1;";
+
+            await using var connection = new MySqlConnection(_connectionString);
+            await connection.OpenAsync();
+            await using var cmd = new MySqlCommand(sql, connection);
+            cmd.Parameters.AddWithValue("@SessionKey", sessionKey);
+            cmd.Parameters.AddWithValue("@SecurityId", securityId);
+            cmd.Parameters.AddWithValue("@MdEntryType", mdEntryType);
+            cmd.Parameters.AddWithValue("@Originator", originator);
+            cmd.Parameters.AddWithValue("@TraderId", (object?)traderId ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("@KeepPositionNo", keepPositionNo);
+            cmd.Parameters.AddWithValue("@UpdatedUtc", DateTime.UtcNow);
+            await cmd.ExecuteNonQueryAsync();
+        }
     }
 
     internal static class StringExtensions

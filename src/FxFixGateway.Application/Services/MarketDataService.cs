@@ -112,6 +112,11 @@ namespace FxFixGateway.Application.Services
             var wholeBookClears = new HashSet<string>();   // 269=J Empty Book
             var trades = new List<MarketTrade>();
 
+            // Egna priser vars position_no kan ha ändrats mellan 35=W och 35=X (se
+            // DeactivateStaleOwnEntriesAsync-kommentaren). KeepPositionNo=-1 för deletes
+            // (inget nytt värde att bevara — hela den egna kvoten på den sidan är borta).
+            var ownReconciliations = new List<(string SecurityId, string MdEntryType, string Originator, string? TraderId, int KeepPositionNo)>();
+
             foreach (var e in entries)
             {
                 // Trade prints (269=2) → market_trades, aldrig till boken.
@@ -166,6 +171,10 @@ namespace FxFixGateway.Application.Services
                 if (e.MdUpdateAction == "2")
                 {
                     deletes.Add((e.SecurityId, e.MdEntryType!, e.PositionNo.Value));
+
+                    if (!string.IsNullOrEmpty(e.Originator))
+                        ownReconciliations.Add((e.SecurityId, e.MdEntryType!, e.Originator!, e.TraderId, -1));
+
                     continue;
                 }
 
@@ -184,6 +193,9 @@ namespace FxFixGateway.Application.Services
                     SnapshotId = 0,
                     UpdatedUtc = now
                 });
+
+                if (!string.IsNullOrEmpty(e.Originator))
+                    ownReconciliations.Add((e.SecurityId, e.MdEntryType!, e.Originator!, e.TraderId, e.PositionNo.Value));
 
                 if (e.CurrencyPair != null && e.Tenor != null && e.Cut != null && e.Strategy != null)
                 {
@@ -221,6 +233,16 @@ namespace FxFixGateway.Application.Services
             {
                 await _snapshotRepo.DeleteBookEntryAsync(sessionKey, d.SecurityId, d.MdEntryType, d.PositionNo);
                 await _canonicalRepo.DeactivateEntryAsync("TPICAP", sessionKey, d.SecurityId, d.MdEntryType, d.PositionNo);
+            }
+
+            // Reconciliation för egna priser vars position_no kan ha bytt schema
+            // (35=W-fallback=1 vs 35=X MDEntryID-trunkering) sedan förra gången.
+            foreach (var r in ownReconciliations)
+            {
+                await _snapshotRepo.DeactivateStaleOwnEntriesAsync(
+                    sessionKey, r.SecurityId, r.MdEntryType, r.Originator, r.TraderId, r.KeepPositionNo);
+                await _canonicalRepo.DeactivateStaleOwnEntriesAsync(
+                    "TPICAP", sessionKey, r.SecurityId, r.MdEntryType, r.Originator, r.TraderId, r.KeepPositionNo);
             }
 
             // Entry-nivå upserts (ren upsert — konkurrerande quotes bevaras).

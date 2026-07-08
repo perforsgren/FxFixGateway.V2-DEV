@@ -25,5 +25,13 @@ namespace FxFixGateway.Domain.Interfaces
             string? strategy = null,
             string? cut = null,
             bool activeOnly = true);
+
+        /// <summary>
+        /// Se motsvarande metod på IMarketDataSnapshotRepository — samma resonemang,
+        /// men för canonical_market_book.
+        /// </summary>
+        Task DeactivateStaleOwnEntriesAsync(
+            string venue, string sessionKey, string securityId, string mdEntryType,
+            string originator, string? traderId, int keepPositionNo);
     }
 }

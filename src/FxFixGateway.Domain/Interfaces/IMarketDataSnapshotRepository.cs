@@ -48,5 +48,17 @@ namespace FxFixGateway.Domain.Interfaces
         /// TPICAP 35=X MDUpdateAction=2 (Delete).
         /// </summary>
         Task DeleteBookEntryAsync(string sessionKey, string securityId, string mdEntryType, int positionNo);
+
+        /// <summary>
+        /// Deaktiverar alla ANDRA aktiva rader för samma (session, security, sida, desk)
+        /// än keepPositionNo. Behövs eftersom TPICAP:s 35=W (fallback position_no=1) och
+        /// 35=X (position_no härlett ur MDEntryID) kan ge SAMMA egna pris olika position_no
+        /// beroende på vilken vägen som senast skrev det — utan detta blir den gamla raden
+        /// en permanent, aldrig-deaktiverad dubblett. Rör bara egna priser (matchar på
+        /// originator/trader_id) — externa anonyma kvoter (NULL originator) påverkas aldrig.
+        /// </summary>
+        Task DeactivateStaleOwnEntriesAsync(
+            string sessionKey, string securityId, string mdEntryType,
+            string originator, string? traderId, int keepPositionNo);
     }
 }
