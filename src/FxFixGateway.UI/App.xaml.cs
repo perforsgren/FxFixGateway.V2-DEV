@@ -23,9 +23,6 @@ using FxTradeHub.Services.Parsing;
 using FxTradeHub.Data.MySql.Repositories;
 using FxSharedConfig;
 
-
-
-
 namespace FxFixGateway.UI
 {
     public partial class App : System.Windows.Application
@@ -249,10 +246,11 @@ namespace FxFixGateway.UI
             // Market Data — orchestration
             services.AddSingleton<IMarketDataOrchestrator>(sp =>
             {
-                var subscriber   = sp.GetRequiredService<IMarketDataSubscriber>();
-                var instrRepo    = sp.GetRequiredService<IMarketInstrumentRepository>();
-                var logger       = sp.GetRequiredService<ILogger<MarketDataOrchestrator>>();
-                return new MarketDataOrchestrator(subscriber, instrRepo, logger);
+                var subscriber = sp.GetRequiredService<IMarketDataSubscriber>();
+                var instrRepo = sp.GetRequiredService<IMarketInstrumentRepository>();
+                var subRepo = sp.GetRequiredService<IMarketSubscriptionRepository>();
+                var logger = sp.GetRequiredService<ILogger<MarketDataOrchestrator>>();
+                return new MarketDataOrchestrator(subscriber, instrRepo, subRepo, logger);
             });
 
             services.AddSingleton<ISecurityListService>(sp =>

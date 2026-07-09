@@ -15,6 +15,9 @@ namespace FxFixGateway.Application.Services
         private readonly ICanonicalMarketBookRepository _canonicalRepo;
         private readonly ILogger<MarketDataService> _logger;
 
+        private readonly Channel<(string SessionKey, IReadOnlyList<TpicapIncrementalEntryDto> Entries)> _incrementalChannel;
+        private readonly Task _incrementalConsumerTask;
+
         private readonly Channel<(string SessionKey, MarketDataSnapshotDto Dto)> _channel;
         private readonly Task _consumerTask;
         private readonly CancellationTokenSource _cts = new();
@@ -59,7 +62,16 @@ namespace FxFixGateway.Application.Services
                     SingleWriter = false
                 });
 
+            _incrementalChannel = Channel.CreateBounded<(string, IReadOnlyList<TpicapIncrementalEntryDto>)>(
+                new BoundedChannelOptions(channelCapacity)
+                {
+                    FullMode = BoundedChannelFullMode.DropOldest,
+                    SingleReader = true,
+                    SingleWriter = false
+                });
+
             _consumerTask = Task.Run(() => ConsumeAsync(_cts.Token));
+            _incrementalConsumerTask = Task.Run(() => ConsumeIncrementalAsync(_cts.Token));
         }
 
         public async Task HandleMarketDataSnapshotAsync(string sessionKey, MarketDataSnapshotDto dto)
@@ -100,16 +112,28 @@ namespace FxFixGateway.Application.Services
             }
         }
 
-        public async Task HandleMarketDataIncrementalRefreshAsync(
-            string sessionKey, IReadOnlyList<TpicapIncrementalEntryDto> entries)
+        public Task HandleMarketDataIncrementalRefreshAsync(string sessionKey, IReadOnlyList<TpicapIncrementalEntryDto> entries)
         {
-            if (entries.Count == 0) return;
+            if (entries.Count == 0) return Task.CompletedTask;
+
+            if (!_incrementalChannel.Writer.TryWrite((sessionKey, entries)))
+            {
+                _logger.LogWarning(
+                    "[{Session}] Incremental market data channel full — dropping batch of {Count} entries",
+                    sessionKey, entries.Count);
+            }
+
+            return Task.CompletedTask;
+        }
+
+        public async Task ProcessIncrementalRefreshAsync(string sessionKey, IReadOnlyList<TpicapIncrementalEntryDto> entries)
+        {
 
             var now = DateTime.UtcNow;
             var bookUpserts = new List<ActiveMarketBookEntry>();
             var canonicalUpserts = new List<CanonicalBookEntry>();
             var deletes = new List<(string SecurityId, string MdEntryType, int PositionNo)>();
-            var wholeBookClears = new HashSet<string>();   // 269=J Empty Book
+            var wholeBookClears = new HashSet<string>();
             var trades = new List<MarketTrade>();
 
             var ownReconciliations = new List<(string SecurityId, string MdEntryType, string Originator, string? TraderId, int KeepPositionNo)>();
@@ -302,6 +326,20 @@ namespace FxFixGateway.Application.Services
             _logger.LogDebug(
                 "[{Session}] 35=X: {Upsert} upsert, {Delete} delete, {Trade} trade, {Clear} clear",
                 sessionKey, bookUpserts.Count, deletes.Count, trades.Count, wholeBookClears.Count);
+        }
+
+        private async Task ConsumeIncrementalAsync(CancellationToken ct)
+        {
+            await foreach (var (sessionKey, entries) in _incrementalChannel.Reader.ReadAllAsync(ct))
+            {
+                try { await ProcessIncrementalRefreshAsync(sessionKey, entries); }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex,
+                        "[{Session}] Incremental consumer failed for batch of {Count} entries",
+                        sessionKey, entries.Count);
+                }
+            }
         }
 
         private async Task ConsumeAsync(CancellationToken ct)
@@ -627,8 +665,11 @@ namespace FxFixGateway.Application.Services
         {
             await _cts.CancelAsync();
             _channel.Writer.Complete();
+            _incrementalChannel.Writer.Complete();
             try { await _consumerTask.ConfigureAwait(false); } catch { /* intentional */ }
+            try { await _incrementalConsumerTask.ConfigureAwait(false); } catch { /* intentional */ }
             _cts.Dispose();
         }
+
     }
 }

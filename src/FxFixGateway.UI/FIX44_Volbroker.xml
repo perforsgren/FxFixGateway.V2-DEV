@@ -778,6 +778,15 @@
     <field name="FinancialStatus" required="N" />
     <field name="CorporateAction" required="N" />
     <field name="NetChgPrevDay" required="N" />
+	<!-- TPICAP-specifika taggar som skickas i meddelandekroppen, inte per NoMDEntries-post -->
+	<field name="TenorValue" required="N" />
+	<field name="OptionStrategy" required="N" />
+	<field name="DeltaType" required="N" />
+	<field name="TradeIndication" required="N" />
+	<field name="PremiumType" required="N" />
+	<field name="InstrumentDeliveryType" required="N" />
+	<field name="DeltaBasis" required="N" />
+	<field name="PremiumCurrency" required="N" />	  
 <group name="NoMDEntries" required="Y">
   <field name="MDEntryType" required="Y" />
   <field name="MDEntryPx" required="N" />
@@ -821,6 +830,11 @@
   </message>
   <message name="MarketDataIncrementalRefresh" msgtype="X" msgcat="app">
     <field name="MDReqID" required="N" />
+	<!-- TPICAP-specifika taggar som skickas i meddelandekroppen, inte per NoMDEntries-post -->
+	<field name="TenorValue" required="N" />
+	<field name="OptionStrategy" required="N" />
+	<field name="DeltaType" required="N" />
+	<field name="TradeIndication" required="N" />	
     <group name="NoMDEntries" required="Y">
       <field name="MDUpdateAction" required="Y" />
       <field name="DeleteReason" required="N" />

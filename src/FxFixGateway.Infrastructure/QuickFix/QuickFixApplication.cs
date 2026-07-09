@@ -338,7 +338,7 @@ namespace FxFixGateway.Infrastructure.QuickFix
                         {
                             var entries = ParseTpicapIncrementalEntries(message);
                             if (entries.Count > 0)
-                                _ = Task.Run(() => _marketDataService.HandleMarketDataIncrementalRefreshAsync(sessionKey, entries));
+                                _ = _marketDataService.HandleMarketDataIncrementalRefreshAsync(sessionKey, entries);
                         }
                         break;
                     }
