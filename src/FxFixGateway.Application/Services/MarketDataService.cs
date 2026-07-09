@@ -126,7 +126,7 @@ namespace FxFixGateway.Application.Services
             return Task.CompletedTask;
         }
 
-        public async Task ProcessIncrementalRefreshAsync(string sessionKey, IReadOnlyList<TpicapIncrementalEntryDto> entries)
+        private async Task ProcessIncrementalRefreshAsync(string sessionKey, IReadOnlyList<TpicapIncrementalEntryDto> entries)
         {
 
             var now = DateTime.UtcNow;
