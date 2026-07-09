@@ -137,6 +137,12 @@ namespace FxFixGateway.Infrastructure.QuickFix
                 // 265 MDUpdateType: 1 = Incremental (krävs ofta tillsammans med 263=1)
                 msg.SetField(new QF.Fields.MDUpdateType(1));
 
+                // 266 AggregatedBook: N = varje individuell order/kvot som egen bok-rad.
+                // Utan detta aggregerar TPICAP flera motparters kvoter på samma pris till
+                // EN rad med summerad storlek och bara en attribuerad desk-identitet —
+                // omöjligt att separera i efterhand när det väl kommit hoppslaget.
+                msg.SetField(new QF.Fields.AggregatedBook(false));
+
                 // 267 NoMDEntryTypes – Bid + Offer + Trade
                 msg.SetField(new QF.Fields.NoMDEntryTypes(3));
 

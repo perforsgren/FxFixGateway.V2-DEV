@@ -45,7 +45,7 @@ namespace FxFixGateway.Application.Services
             if (sessionKey == "FXOHUB_UAT")
             {
                 _logger.LogInformation("[{Session}] FXOHUB probe — sending MarketDataRequest (35=V)", sessionKey);
-                _subscriber.SendMarketDataRequestProbe(sessionKey, new[] { "EUR/USD" });
+                _subscriber.SendMarketDataRequestProbe(sessionKey, new[] { "EUR/USD", "EUR/SEK" });   //TODO: DB lookup
                 return Task.CompletedTask;
             }
 
