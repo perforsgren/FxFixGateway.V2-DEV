@@ -176,6 +176,8 @@ namespace FxFixGateway.Application.Services
                         TradeDate = tradeDate,
                         TradeTime = tradeTime,
                         TradeCondition = e.TradeCondition,
+                        Originator = e.Originator,
+                        TraderId = e.TraderId,
                         SnapshotId = 0,
                         ReceivedUtc = now
                     });
@@ -581,6 +583,8 @@ namespace FxFixGateway.Application.Services
                     TradeDate = e.EntryDate.HasValue ? DateOnly.FromDateTime(e.EntryDate.Value) : null,
                     TradeTime = e.EntryTime.HasValue ? TimeOnly.FromTimeSpan(e.EntryTime.Value) : null,
                     TradeCondition = e.TradeCondition,
+                    Originator = e.Originator,
+                    TraderId = e.TraderId,
                     SnapshotId = snapshotId,
                     ReceivedUtc = now
                 })

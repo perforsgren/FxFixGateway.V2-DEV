@@ -27,6 +27,8 @@ namespace FxFixGateway.Domain.Entities
         public DateOnly? TradeDate      { get; set; }  // tag 272
         public TimeOnly? TradeTime      { get; set; }  // tag 273
         public string?   TradeCondition { get; set; }  // Volbroker: tag 277. TPICAP: G/P härlett ur tag 6009
+        public string? Originator       { get; set; }
+        public string? TraderId         { get; set; }
         public long      SnapshotId     { get; set; }
         public DateTime  ReceivedUtc    { get; set; }
     }
