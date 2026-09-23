@@ -546,9 +546,9 @@ namespace FxFixGateway.Infrastructure.QuickFix
         {
             return sessionKey switch
             {
-                "VOLB_STP_DEV" => "VOLBROKER",
+                //"VOLB_STP_DEV" => "VOLBROKER",
                 "VOLB_STP_PROD" => "VOLBROKER",
-                "FENICS_STP_STAGE2" => "FENICS",
+                "FENICS_STP_PROD" => "FENICS",
                 _ => sessionKey
             };
         }
