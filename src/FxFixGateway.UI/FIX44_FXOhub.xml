@@ -242,6 +242,7 @@
 		  <field name="ExecDeltaHedge" required="N" />
 		  <field name="HedgeTradeType" required="N" />
 		  <field name="PremiumDel" required="N" />
+		  <field name="MarketSegmentID" required="N" />
 		  <group name="NoRelatedSym" required="N">
 			  <field name="Symbol" required="N" />
 			  <field name="SecurityType" required="N" />
@@ -6945,7 +6946,8 @@
     <field number="9075" name="LegDelta" type="STRING" />
     <field number="9083" name="NetDelta" type="STRING" />
     <field number="9086" name="NetVega" type="STRING" />
-    <field number="9125" name="LegCutoff" type="STRING" />
-	  
+	<field number="9125" name="LegCutoff" type="STRING" />
+	<field number="1300" name="MarketSegmentID" type="STRING" />
+
   </fields>
 </fix>
