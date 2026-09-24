@@ -779,7 +779,7 @@
 	<field name="InstrumentDeliveryType" required="N" />
 	<field name="DeltaBasis" required="N" />
 	<field name="PremiumCurrency" required="N" />	  
-<group name="NoMDEntries" required="Y">
+<group name="NoMDEntries" required="N">
   <field name="MDEntryType" required="Y" />
   <field name="MDEntryPx" required="N" />
   <field name="Currency" required="N" />
