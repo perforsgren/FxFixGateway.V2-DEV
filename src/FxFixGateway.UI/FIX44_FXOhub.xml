@@ -819,6 +819,28 @@
 </group>
     <field name="ApplQueueDepth" required="N" />
     <field name="ApplQueueResolution" required="N" />
+    <field name="QuoteReqID" required="N" />
+    <field name="MDSource" required="N" />
+    <field name="TransactTime" required="N" />
+    <group name="NoQuoteSets" required="N">
+      <field name="QuoteSetID" required="N" />
+      <field name="QuoteID" required="N" />
+      <field name="BidStrategyVol" required="N" />
+      <field name="OfferStrategyVol" required="N" />
+      <field name="OwnQuote" required="N" />
+      <field name="OwnQuoteRequestor" required="N" />
+      <group name="NoMDEntries" required="N">
+        <field name="MDEntryType" required="N" />
+        <field name="LegID" required="N" />
+        <field name="MDEntryPx" required="N" />
+        <field name="MDEntrySize" required="N" />
+        <field name="MDEntryPositionNo" required="N" />
+        <field name="MDPxRelatedTo" required="N" />
+        <field name="LegSide" required="N" />
+        <field name="LegType" required="N" />
+        <field name="Text" required="N" />
+      </group>
+    </group>	  
   </message>
   <message name="MarketDataIncrementalRefresh" msgtype="X" msgcat="app">
     <field name="MDReqID" required="N" />
@@ -6948,6 +6970,13 @@
     <field number="9086" name="NetVega" type="STRING" />
 	<field number="9125" name="LegCutoff" type="STRING" />
 	<field number="1300" name="MarketSegmentID" type="STRING" />
+	  
+	<field number="5177" name="MDSource" type="STRING" />
+	<field number="5331" name="OwnQuote" type="STRING" />
+	<field number="6001" name="BidStrategyVol" type="STRING" />
+	<field number="6002" name="OfferStrategyVol" type="STRING" />
+	<field number="6012" name="OwnQuoteRequestor" type="STRING" />
+	<field number="10502" name="MDPxRelatedTo" type="STRING" />	  
 
   </fields>
 </fix>
