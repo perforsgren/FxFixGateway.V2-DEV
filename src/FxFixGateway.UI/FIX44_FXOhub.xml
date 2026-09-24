@@ -233,64 +233,55 @@
       <field name="RawDataLength" required="N" />
       <field name="RawData" required="N" />
     </message>
-    <message name="QuoteRequest" msgtype="R" msgcat="app">
-      <field name="QuoteReqID" required="Y" />
-      <field name="RFQReqID" required="N" />
-      <field name="ClOrdID" required="N" />
-      <field name="OrderCapacity" required="N" />
-      <group name="NoRelatedSym" required="Y">
-        <component name="Instrument" required="Y" />
-        <component name="FinancingDetails" required="N" />
-        <group name="NoUnderlyings" required="N">
-          <component name="UnderlyingInstrument" required="N" />
-        </group>
-        <field name="PrevClosePx" required="N" />
-        <field name="QuoteRequestType" required="N" />
-        <field name="QuoteType" required="N" />
-        <field name="TradingSessionID" required="N" />
-        <field name="TradingSessionSubID" required="N" />
-        <field name="TradeOriginationDate" required="N" />
-        <field name="Side" required="N" />
-        <field name="QtyType" required="N" />
-        <component name="OrderQtyData" required="N" />
-        <field name="SettlType" required="N" />
-        <field name="SettlDate" required="N" />
-        <field name="SettlDate2" required="N" />
-        <field name="OrderQty2" required="N" />
-        <field name="Currency" required="N" />
-        <component name="Stipulations" required="N" />
-        <field name="Account" required="N" />
-        <field name="AcctIDSource" required="N" />
-        <field name="AccountType" required="N" />
-        <group name="NoLegs" required="N">
-          <component name="InstrumentLeg" required="N" />
-          <field name="LegQty" required="N" />
-          <field name="LegSwapType" required="N" />
-          <field name="LegSettlType" required="N" />
-          <field name="LegSettlDate" required="N" />
-          <component name="LegStipulations" required="N" />
-          <component name="NestedParties" required="N" />
-          <component name="LegBenchmarkCurveData" required="N" />
-        </group>
-        <group name="NoQuoteQualifiers" required="N">
-          <field name="QuoteQualifier" required="N" />
-        </group>
-        <field name="QuotePriceType" required="N" />
-        <field name="OrdType" required="N" />
-        <field name="ValidUntilTime" required="N" />
-        <field name="ExpireTime" required="N" />
-        <field name="TransactTime" required="N" />
-        <component name="SpreadOrBenchmarkCurveData" required="N" />
-        <field name="PriceType" required="N" />
-        <field name="Price" required="N" />
-        <field name="Price2" required="N" />
-        <component name="YieldData" required="N" />
-        <component name="Parties" required="N" />
-      </group>
-      <field name="Text" required="N" />
-      <field name="EncodedTextLen" required="N" />
-      <field name="EncodedText" required="N" />
-    </message>
+	  <message name="QuoteRequest" msgtype="R" msgcat="app">
+		  <field name="QuoteReqID" required="Y" />
+		  <field name="Text" required="N" />
+		  <field name="BrokerID" required="N" />
+		  <field name="TraderId" required="N" />
+		  <field name="TradeDate" required="N" />
+		  <field name="ExecDeltaHedge" required="N" />
+		  <field name="HedgeTradeType" required="N" />
+		  <field name="PremiumDel" required="N" />
+		  <group name="NoRelatedSym" required="N">
+			  <field name="Symbol" required="N" />
+			  <field name="SecurityType" required="N" />
+			  <field name="OptionStrategy" required="N" />
+			  <field name="QuoteRequestType" required="N" />
+			  <field name="QuoteType" required="N" />
+			  <field name="Side" required="N" />
+			  <field name="TransactTime" required="N" />
+			  <field name="ValidUntilTime" required="N" />
+			  <field name="ExpireTime" required="N" />
+			  <field name="NetDelta" required="N" />
+			  <field name="NetVega" required="N" />
+			  <group name="NoLegs" required="N">
+				  <field name="LegSymbol" required="N" />
+				  <field name="LegID" required="N" />
+				  <field name="LegQty" required="N" />
+				  <field name="LegMaturityDate" required="N" />
+				  <field name="LegStrikePrice" required="N" />
+				  <field name="LegSide" required="N" />
+				  <field name="TenorValue" required="N" />
+				  <field name="LegSettlDate" required="N" />
+				  <field name="LegType" required="N" />
+				  <field name="FXOptionStyle" required="N" />
+				  <field name="LegCutoff" required="N" />
+				  <field name="PitType" required="N" />
+				  <field name="DeliveryDate" required="N" />
+				  <field name="LegDelta" required="N" />
+				  <field name="ATMType" required="N" />
+				  <field name="LegCurrency" required="N" />
+				  <field name="Currency2" required="N" />
+				  <field name="CallPutCurrency" required="N" />
+				  <field name="SettlCurrency" required="N" />
+			  </group>
+			  <group name="NoPartyIDs" required="N">
+				  <field name="PartyID" required="N" />
+				  <field name="PartyIDSource" required="N" />
+				  <field name="PartyRole" required="N" />
+			  </group>
+		  </group>
+	  </message>
     <message name="QuoteResponse" msgtype="AJ" msgcat="app">
       <field name="QuoteRespID" required="Y" />
       <field name="QuoteID" required="N" />
@@ -4381,7 +4372,8 @@
     <field number="50" name="SenderSubID" type="STRING" />
     <field number="52" name="SendingTime" type="UTCTIMESTAMP" />
     <field number="53" name="Quantity" type="QTY" />
-    <field number="54" name="Side" type="CHAR">  
+    <field number="54" name="Side" type="CHAR">
+      <value enum="0" description="TWO_WAY" />		
       <value enum="1" description="BUY" />
       <value enum="2" description="SELL" />
       <value enum="3" description="BUY_MINUS" />
@@ -6938,6 +6930,22 @@
     <field number="2893" name="LegUSIShortCode" type="STRING" />
 
     <field number="9536" name="TraderId" type="STRING" />
-
+	  
+    <field number="5475" name="PremiumDel" type="STRING" />
+    <field number="6005" name="ATMType" type="STRING" />
+    <field number="6007" name="PitType" type="STRING" />
+    <field number="6713" name="LegType" type="STRING" />
+    <field number="7933" name="BrokerID" type="STRING" />
+    <field number="7940" name="LegID" type="STRING" />
+    <field number="9015" name="ExecDeltaHedge" type="STRING" />
+    <field number="9016" name="HedgeTradeType" type="STRING" />
+    <field number="9019" name="FXOptionStyle" type="STRING" />
+    <field number="9034" name="CallPutCurrency" type="STRING" />
+    <field number="9074" name="Currency2" type="STRING" />
+    <field number="9075" name="LegDelta" type="STRING" />
+    <field number="9083" name="NetDelta" type="STRING" />
+    <field number="9086" name="NetVega" type="STRING" />
+    <field number="9125" name="LegCutoff" type="STRING" />
+	  
   </fields>
 </fix>
