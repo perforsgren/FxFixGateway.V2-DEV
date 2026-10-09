@@ -1,13 +1,10 @@
+using System;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using FxFixGateway.Infrastructure.PostMarker;
 using Microsoft.Extensions.Logging;
-using QuickFix.Fields;
-using System;
 using System.Collections.ObjectModel;
 using System.Globalization;
-using System.Linq;
-using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Threading;
 
