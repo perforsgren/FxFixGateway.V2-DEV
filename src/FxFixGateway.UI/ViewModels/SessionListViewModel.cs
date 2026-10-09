@@ -8,6 +8,7 @@ using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Linq;
 using System.Threading.Tasks;
+using System.Windows.Data;
 using System.Windows.Input;
 
 namespace FxFixGateway.UI.ViewModels
@@ -104,6 +105,21 @@ namespace FxFixGateway.UI.ViewModels
         {
             if (e.PropertyName == nameof(SessionViewModel.Status) || e.PropertyName == nameof(SessionViewModel.IsEnabled))
                 RaiseCountsChanged();
+
+            // A session disabled or enabled in edit mode appears or disappears at once.
+            if (e.PropertyName == nameof(SessionViewModel.IsEnabled) && ShowOnlyEnabled)
+                CollectionViewSource.GetDefaultView(Sessions).Refresh();
+        }
+
+        /// <summary>
+        /// "Show only enabled": filters the list's view of Sessions. Sessions itself — and so the
+        /// counts and the FIX sessions they reflect — is not changed.
+        /// </summary>
+        partial void OnShowOnlyEnabledChanged(bool value)
+        {
+            CollectionViewSource.GetDefaultView(Sessions).Filter = value
+                ? item => item is SessionViewModel session && session.IsEnabled
+                : null;
         }
 
         private void RaiseCountsChanged()

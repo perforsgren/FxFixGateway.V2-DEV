@@ -248,10 +248,7 @@
             </Border>
 
             <!-- ──────────── Tabs ──────────── -->
-            <TabControl Grid.Row="3" Margin="0,12,0,0"
-                        materialDesign:ColorZoneAssist.Mode="Custom"
-                        materialDesign:ColorZoneAssist.Background="Transparent"
-                        materialDesign:ColorZoneAssist.Foreground="{StaticResource Gw.Brush.Text}">
+            <TabControl Grid.Row="3" Margin="0,12,0,0">
 
                 <!-- Details -->
                 <TabItem Header="Details">
@@ -332,7 +329,7 @@
                                     <ToggleButton Grid.Row="7" Grid.Column="1"
                                                   IsChecked="{Binding SelectedSession.IsEnabled, Mode=TwoWay}"
                                                   IsEnabled="{Binding IsEditMode}"
-                                                  Style="{StaticResource MaterialDesignSwitchToggleButton}"
+                                                  Style="{StaticResource Gw.Switch}"
                                                   HorizontalAlignment="Left"
                                                   Margin="0,8"/>
                                 </Grid>
@@ -405,7 +402,7 @@
                                     <ToggleButton Grid.Row="7" Grid.Column="1"
                                                   IsChecked="{Binding SelectedSession.ResetOnLogon, Mode=OneWay}"
                                                   IsEnabled="False"
-                                                  Style="{StaticResource MaterialDesignSwitchToggleButton}"
+                                                  Style="{StaticResource Gw.Switch}"
                                                   HorizontalAlignment="Left"
                                                   Margin="0,8"/>
                                 </Grid>

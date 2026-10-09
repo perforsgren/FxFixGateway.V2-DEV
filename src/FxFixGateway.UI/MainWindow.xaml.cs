@@ -1,9 +1,9 @@
 using System;
-using System.Runtime.InteropServices;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
-using System.Windows.Interop;
+using System.Windows.Media.Imaging;
 using FxFixGateway.Domain.Enums;
 using FxFixGateway.Domain.Interfaces;
 using FxFixGateway.UI.ViewModels;
@@ -17,8 +17,7 @@ namespace FxFixGateway.UI
     /// </summary>
     public partial class MainWindow : Window
     {
-        private const int DwmwaUseImmersiveDarkModeBefore20H1 = 19;
-        private const int DwmwaUseImmersiveDarkMode = 20;
+        private const string IconUri = "pack://application:,,,/Resources/app.ico";
 
         private bool _shutdownCompleted;
 
@@ -26,14 +25,8 @@ namespace FxFixGateway.UI
         {
             InitializeComponent();
 
-            var iconUri = new Uri("pack://application:,,,/Resources/app.ico", UriKind.Absolute);
-            Icon = System.Windows.Media.Imaging.BitmapFrame.Create(iconUri);
-        }
-
-        protected override void OnSourceInitialized(EventArgs e)
-        {
-            base.OnSourceInitialized(e);
-            UseDarkTitleBar();
+            Icon = BitmapFrame.Create(new Uri(IconUri, UriKind.Absolute));
+            TitleBarIcon.Source = LoadBestIconFrame(IconUri, preferredSize: 32);
         }
 
         private async void Window_Loaded(object sender, RoutedEventArgs e)
@@ -45,27 +38,38 @@ namespace FxFixGateway.UI
             }
         }
 
-        /// <summary>
-        /// Dark window title bar to match the dark theme (Windows 10 1809 and later; attribute 19
-        /// before 20H1, 20 after). Purely cosmetic — ignored where not supported.
-        /// </summary>
-        private void UseDarkTitleBar()
+        /// <summary>The .ico frame closest to <paramref name="preferredSize"/> pixels, for a sharp title bar icon.</summary>
+        private static BitmapSource LoadBestIconFrame(string packUri, int preferredSize)
         {
-            try
-            {
-                var handle = new WindowInteropHelper(this).Handle;
-                var enabled = 1;
+            var decoder = new IconBitmapDecoder(
+                new Uri(packUri, UriKind.Absolute),
+                BitmapCreateOptions.PreservePixelFormat,
+                BitmapCacheOption.OnLoad);
 
-                if (DwmSetWindowAttribute(handle, DwmwaUseImmersiveDarkMode, ref enabled, sizeof(int)) != 0)
-                    DwmSetWindowAttribute(handle, DwmwaUseImmersiveDarkModeBefore20H1, ref enabled, sizeof(int));
-            }
-            catch (Exception ex)
-            {
-                Log.Debug(ex, "Dark title bar not available");
-            }
+            return decoder.Frames
+                .OrderBy(f => Math.Abs(f.PixelWidth - preferredSize))
+                .First();
         }
 
-        [DllImport("dwmapi.dll")]
-        private static extern int DwmSetWindowAttribute(IntPtr hwnd, int attribute, ref int value, int size);
+        // ────────────────────────────────────
+        // Custom title bar buttons
+        // ────────────────────────────────────
+
+        private void MinimizeButton_Click(object sender, RoutedEventArgs e)
+        {
+            WindowState = WindowState.Minimized;
+        }
+
+        private void MaximizeButton_Click(object sender, RoutedEventArgs e)
+        {
+            WindowState = WindowState == WindowState.Maximized
+                ? WindowState.Normal
+                : WindowState.Maximized;
+        }
+
+        private void CloseButton_Click(object sender, RoutedEventArgs e)
+        {
+            Close();
+        }
     }
 }

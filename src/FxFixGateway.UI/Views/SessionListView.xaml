@@ -12,16 +12,17 @@
     <Grid>
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
-            <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
         </Grid.RowDefinitions>
 
-        <!-- Header -->
+        <!-- Header: title, count, "Show only enabled" switch and add button -->
         <Grid Grid.Row="0" Margin="16,14,12,10">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="Auto"/>
                 <ColumnDefinition Width="Auto"/>
                 <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="Auto"/>
                 <ColumnDefinition Width="Auto"/>
             </Grid.ColumnDefinitions>
 
@@ -37,37 +38,21 @@
                 <TextBlock Text="{Binding Sessions.Count}"/>
             </Border>
 
-            <Button Grid.Column="3"
-                    Style="{StaticResource Gw.IconButton}"
-                    Command="{Binding AddSessionCommand}"
-                    ToolTip="Add new session">
-                <materialDesign:PackIcon Kind="Plus" Width="18" Height="18"/>
-            </Button>
+            <TextBlock Grid.Column="3"
+                       Text="Show only enabled"
+                       Style="{StaticResource Gw.Faint}"
+                       VerticalAlignment="Center"
+                       Margin="0,0,8,0"/>
+
+            <ToggleButton Grid.Column="4"
+                          IsChecked="{Binding ShowOnlyEnabled}"
+                          Style="{StaticResource Gw.Switch}"
+                          ToolTip="Show only enabled sessions"
+                          Margin="0,0,10,0"/>
         </Grid>
 
-        <!-- Filter -->
-        <StackPanel Grid.Row="1" Margin="16,0,16,8">
-            <TextBox materialDesign:HintAssist.Hint="Filter sessions..."
-                     materialDesign:HintAssist.IsFloating="False"
-                     materialDesign:TextFieldAssist.TextFieldCornerRadius="8"
-                     Text="{Binding FilterText, UpdateSourceTrigger=PropertyChanged}"
-                     Style="{StaticResource MaterialDesignOutlinedTextBox}"
-                     Padding="10,8"
-                     Margin="0,0,0,10"/>
-
-            <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
-                <ToggleButton IsChecked="{Binding ShowOnlyEnabled}"
-                              Style="{StaticResource MaterialDesignSwitchToggleButton}"
-                              VerticalAlignment="Center"/>
-                <TextBlock Text="Show only enabled"
-                           Style="{StaticResource Gw.Muted}"
-                           Margin="10,0,0,0"
-                           VerticalAlignment="Center"/>
-            </StackPanel>
-        </StackPanel>
-
         <!-- Session list -->
-        <ListBox Grid.Row="2"
+        <ListBox Grid.Row="1"
                  ItemsSource="{Binding Sessions}"
                  SelectedItem="{Binding SelectedSession}"
                  ItemContainerStyle="{StaticResource Gw.ListRow}"

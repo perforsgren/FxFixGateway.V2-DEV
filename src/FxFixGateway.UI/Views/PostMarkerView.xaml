@@ -279,10 +279,7 @@
                       ShowsPreview="True"/>
 
         <!-- ──────────── Payload XML / activity log ──────────── -->
-        <TabControl Grid.Row="4"
-                    materialDesign:ColorZoneAssist.Mode="Custom"
-                    materialDesign:ColorZoneAssist.Background="Transparent"
-                    materialDesign:ColorZoneAssist.Foreground="{StaticResource Gw.Brush.Text}">
+        <TabControl Grid.Row="4">
             <TabItem Header="Payload XML">
                 <Grid Margin="0,10,0,0">
                     <Grid.RowDefinitions>

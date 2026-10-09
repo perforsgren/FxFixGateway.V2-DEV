@@ -2,7 +2,9 @@ using System;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using System.Threading.Tasks;
+using System.Windows.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using FxFixGateway.Application.Services;
@@ -14,8 +16,12 @@ namespace FxFixGateway.UI.ViewModels
 {
     public partial class MainViewModel : ViewModelBase
     {
+        // How often the GATEWAY card looks for a new log file (Serilog starts one at midnight and at 50 MB).
+        private static readonly TimeSpan LogFileCheckInterval = TimeSpan.FromSeconds(30);
+
         private readonly SessionManagementService _sessionManagementService;
         private readonly ILogger<MainViewModel> _logger;
+        private readonly DispatcherTimer _logFileTimer;
 
         [ObservableProperty]
         private SessionListViewModel _sessionList;
@@ -32,6 +38,14 @@ namespace FxFixGateway.UI.ViewModels
         /// <summary>True while the PostMarker panel is shown instead of a FIX session's details.</summary>
         [ObservableProperty]
         private bool _isPostMarkerSelected;
+
+        /// <summary>"Log: logs\gateway-20261009.txt" — the file Serilog is writing to now.</summary>
+        [ObservableProperty]
+        private string _logFileText = "Log: –";
+
+        /// <summary>Full path of the current log file (tooltip).</summary>
+        [ObservableProperty]
+        private string _logFilePath = string.Empty;
 
         public MainViewModel(
             SessionManagementService sessionManagementService,
@@ -56,7 +70,14 @@ namespace FxFixGateway.UI.ViewModels
 
             // ÄNDRAT: Använd SessionSelected event istället för PropertyChanged
             _sessionList.SessionSelected += OnSessionSelected;
+
+            UpdateLogFile();
+            _logFileTimer = new DispatcherTimer { Interval = LogFileCheckInterval };
+            _logFileTimer.Tick += (s, e) => UpdateLogFile();
+            _logFileTimer.Start();
         }
+
+        private static string LogFolder => Path.Combine(Directory.GetCurrentDirectory(), "logs");
 
         /// <summary>The PostMarker panel and the PostMarker card in the connection list.</summary>
         public PostMarkerViewModel PostMarker { get; }
@@ -131,11 +152,33 @@ namespace FxFixGateway.UI.ViewModels
             StatusBarText = $"Refreshed at {DateTime.Now:HH:mm:ss}";
         }
 
+        /// <summary>
+        /// Shows the log file Serilog writes to now: the most recently written gateway-*.txt in
+        /// logs\ (SerilogConfiguration rolls daily, gateway-20261009.txt, and at 50 MB, gateway-20261009_001.txt).
+        /// </summary>
+        private void UpdateLogFile()
+        {
+            try
+            {
+                var folder = new DirectoryInfo(LogFolder);
+                var current = folder.Exists
+                    ? folder.EnumerateFiles("gateway-*.txt").OrderByDescending(f => f.LastWriteTimeUtc).FirstOrDefault()
+                    : null;
+
+                LogFileText = current != null ? $"Log: logs\\{current.Name}" : "Log: no log file yet";
+                LogFilePath = current?.FullName ?? folder.FullName;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogDebug(ex, "Could not read the log folder");
+            }
+        }
+
         /// <summary>Opens the gateway's log folder (logs\ under the working directory, see SerilogConfiguration).</summary>
         [RelayCommand]
         private void OpenLogFolder()
         {
-            var folder = Path.Combine(Directory.GetCurrentDirectory(), "logs");
+            var folder = LogFolder;
 
             try
             {
