@@ -23,7 +23,9 @@ namespace FxFixGateway.Infrastructure.PostMarker
     /// <item>Heartbeat POSTMARKER_PROD through GatewayHeartbeatService, like the FIX sessions.</item>
     /// </list>
     /// A broken session is dropped and a new one connected, quickly at first and then backing off.
-    /// Independent of the FIX engine: it shares only the heartbeat service and the database.
+    /// The gateway UI follows the service through State and the events below, and can ask for a
+    /// reconnect or a manual Accept. Independent of the FIX engine: it shares only the heartbeat
+    /// service and the database.
     /// </summary>
     public sealed class PostMarkerIngestService : BackgroundService
     {
@@ -51,6 +53,9 @@ namespace FxFixGateway.Infrastructure.PostMarker
             TimeSpan.FromSeconds(60)
         };
 
+        // How many activity lines are kept for a UI that opens after they were written.
+        private const int MaxBufferedActivity = 300;
+
         private readonly PostMarkerSettings _settings;
         private readonly PostMarkerSoapClient _client;
         private readonly IMessageInService _messageInService;
@@ -59,6 +64,20 @@ namespace FxFixGateway.Infrastructure.PostMarker
         private readonly IStpRepositoryAsync _stpRepository;
         private readonly ISessionHeartbeatNotifier _heartbeat;
         private readonly ILogger<PostMarkerIngestService> _logger;
+
+        private readonly object _sync = new();
+        private readonly Queue<PostMarkerActivity> _recentActivity = new();
+
+        // Guarded by _sync. _sessionCts ends the current session, _waitCts the wait before the next.
+        private CancellationTokenSource? _sessionCts;
+        private CancellationTokenSource? _waitCts;
+        private bool _reconnectRequested;
+        private PostMarkerConnectionState _state = PostMarkerConnectionState.Starting;
+        private string? _stateDetail;
+        private DateTime? _nextConnectUtc;
+
+        // Set while a session is connected; used by a manual Accept from the UI.
+        private volatile string? _sessionId;
 
         public PostMarkerIngestService(
             PostMarkerSettings settings,
@@ -80,6 +99,176 @@ namespace FxFixGateway.Infrastructure.PostMarker
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         }
 
+        // ────────────────────────────────────
+        // For the gateway UI
+        // ────────────────────────────────────
+
+        /// <summary>Raised (on a background thread) whenever State, StateDetail or NextConnectUtc changes.</summary>
+        public event EventHandler? StateChanged;
+
+        /// <summary>A RECEIVED deal was stored (or delivered again). Raised on a background thread.</summary>
+        public event EventHandler<PostMarkerPayloadInfo>? PayloadReceived;
+
+        /// <summary>The deal with this sequence number was acknowledged. Raised on a background thread.</summary>
+        public event EventHandler<int>? PayloadAcknowledged;
+
+        /// <summary>Accept was sent for this sequence number (automatically or by hand). Raised on a background thread.</summary>
+        public event EventHandler<int>? PayloadAccepted;
+
+        /// <summary>A line was written to the PostMarker activity log. Raised on a background thread.</summary>
+        public event EventHandler<PostMarkerActivity>? ActivityLogged;
+
+        public PostMarkerConnectionState State
+        {
+            get { lock (_sync) return _state; }
+        }
+
+        /// <summary>Why the service is not connected (error, missing account), or null.</summary>
+        public string? StateDetail
+        {
+            get { lock (_sync) return _stateDetail; }
+        }
+
+        /// <summary>When the next connect attempt is due while Reconnecting, otherwise null.</summary>
+        public DateTime? NextConnectUtc
+        {
+            get { lock (_sync) return _nextConnectUtc; }
+        }
+
+        public bool IsConnected => _sessionId != null;
+
+        /// <summary>The latest activity lines, oldest first — for a UI opened after they were written.</summary>
+        public IReadOnlyList<PostMarkerActivity> GetRecentActivity()
+        {
+            lock (_sync) return _recentActivity.ToList();
+        }
+
+        /// <summary>
+        /// Drops the current session and connects a new one right away; while waiting to reconnect,
+        /// skips the rest of the wait. Does nothing if the service is disabled or not configured.
+        /// </summary>
+        public void RequestReconnect()
+        {
+            CancellationTokenSource? session;
+            CancellationTokenSource? wait;
+
+            lock (_sync)
+            {
+                if (_state is PostMarkerConnectionState.Disabled
+                           or PostMarkerConnectionState.NotConfigured
+                           or PostMarkerConnectionState.Stopped)
+                {
+                    return;
+                }
+
+                _reconnectRequested = true;
+                session = _sessionCts;
+                wait = _waitCts;
+            }
+
+            Report(LogLevel.Information, "Reconnect requested from the gateway UI.");
+
+            // Off the caller's (UI) thread: cancelling runs the session's continuations.
+            _ = Task.Run(() =>
+            {
+                TryCancel(session);
+                TryCancel(wait);
+            });
+        }
+
+        private static void TryCancel(CancellationTokenSource? cts)
+        {
+            try
+            {
+                cts?.Cancel();
+            }
+            catch (ObjectDisposedException)
+            {
+                // That session or wait has already ended.
+            }
+        }
+
+        /// <summary>
+        /// Sends Accept for <paramref name="sequenceNumber"/> now, from the gateway UI — for a deal
+        /// whose automatic Accept failed (ACK_ERROR) or that has to be accepted by hand. Marks the
+        /// POST_MARKER_ACCEPT link ACK_SENT. Throws if PostMarker is not connected or refuses it.
+        /// </summary>
+        public async Task AcceptManuallyAsync(int sequenceNumber, CancellationToken ct = default)
+        {
+            var sessionId = _sessionId ?? throw new InvalidOperationException("PostMarker is not connected.");
+            var seqText = sequenceNumber.ToString(CultureInfo.InvariantCulture);
+
+            try
+            {
+                await _client.AcceptAsync(sessionId, sequenceNumber, string.Empty, ct).ConfigureAwait(false);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                Report(LogLevel.Error, $"Manual Accept failed for SeqNo={seqText}: {ex.Message}", ex);
+                throw;
+            }
+
+            try
+            {
+                await _stpRepository.UpdateTradeSystemLinkStatusByExternalTradeIdAsync(AcceptSystemCode, seqText, "ACK_SENT").ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                Report(LogLevel.Warning, $"Accept sent for SeqNo={seqText}, but setting POST_MARKER_ACCEPT to ACK_SENT failed: {ex.Message}", ex);
+            }
+
+            Report(LogLevel.Information, $"Accept sent by hand: SeqNo={seqText}.");
+            Raise(PayloadAccepted, sequenceNumber);
+        }
+
+        /// <summary>
+        /// The latest stored PostMarker deals (message_in, venue FXOHUB) for the UI's payload list,
+        /// marked Accepted where the POST_MARKER_ACCEPT link is ACK_SENT — as PostMarkerStudio
+        /// loaded them. Deals injected from file (no sequence number) are left out.
+        /// </summary>
+        public async Task<IReadOnlyList<PostMarkerPayloadInfo>> LoadRecentPayloadsAsync(int count)
+        {
+            var messages = await _stpRepository.GetRecentMessageInsAsync(VenueCode, count).ConfigureAwait(false);
+
+            IReadOnlyList<PendingTradeSystemLink> acceptedLinks;
+            try
+            {
+                acceptedLinks = await _stpRepository.GetPendingTradeSystemLinksAsync(AcceptSystemCode, "ACK_SENT").ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "[PostMarker] Reading ACK_SENT links failed — Accepted not shown.");
+                acceptedLinks = Array.Empty<PendingTradeSystemLink>();
+            }
+
+            var acceptedSeqNos = new HashSet<int>();
+            foreach (var link in acceptedLinks)
+            {
+                if (int.TryParse(link.ExternalTradeId, NumberStyles.Integer, CultureInfo.InvariantCulture, out var seq))
+                    acceptedSeqNos.Add(seq);
+            }
+
+            return messages
+                .Where(m => m.PostMarkerSeqNo is > 0)
+                .Select(m =>
+                {
+                    var seq = m.PostMarkerSeqNo!.Value;
+                    var accepted = acceptedSeqNos.Contains(seq);
+                    return new PostMarkerPayloadInfo(
+                        seq,
+                        accepted ? "ACCEPTED" : "RECEIVED",
+                        DateTime.SpecifyKind(m.ReceivedUtc, DateTimeKind.Utc),
+                        m.RawPayload ?? string.Empty,
+                        Acknowledged: true,
+                        Accepted: accepted);
+                })
+                .ToList();
+        }
+
+        // ────────────────────────────────────
+        // Session lifecycle
+        // ────────────────────────────────────
+
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
             // Let the host finish starting (FIX engine, UI) before any network work.
@@ -87,14 +276,16 @@ namespace FxFixGateway.Infrastructure.PostMarker
 
             if (!_settings.Enabled)
             {
-                _logger.LogInformation("[PostMarker] Disabled in appsettings.json — not connecting.");
+                SetState(PostMarkerConnectionState.Disabled, "\"Enabled\": false in appsettings.json");
+                Report(LogLevel.Information, "Disabled in appsettings.json — not connecting.");
                 return;
             }
 
             if (!_settings.HasAccount)
             {
-                _logger.LogError("[PostMarker] No account (UserName, Password, SystemId) — {Reason}. Not connecting.",
-                    _settings.AccountError ?? "PostMarker section in fx_appsettings.json is incomplete");
+                var reason = _settings.AccountError ?? "PostMarker section in fx_appsettings.json is incomplete";
+                SetState(PostMarkerConnectionState.NotConfigured, reason);
+                Report(LogLevel.Error, $"No account (UserName, Password, SystemId) — {reason}. Not connecting.");
                 return;
             }
 
@@ -103,67 +294,112 @@ namespace FxFixGateway.Infrastructure.PostMarker
             while (!stoppingToken.IsCancellationRequested)
             {
                 string? sessionId = null;
+                string? failure = null;
+
+                using var sessionCts = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
+                lock (_sync)
+                {
+                    _sessionCts = sessionCts;
+                    _reconnectRequested = false;
+                }
 
                 try
                 {
-                    _logger.LogInformation("[PostMarker] Connecting as {User} (System ID {SystemId}, test flag {TestFlag})...",
-                        _settings.UserName, _settings.SystemId, _settings.TestFlag);
+                    SetState(PostMarkerConnectionState.Connecting, null);
+                    Report(LogLevel.Information,
+                        $"Connecting as {_settings.UserName} (System ID {_settings.SystemId}, test flag {_settings.TestFlag})...");
 
                     sessionId = await _client.ConnectAsync(
-                        _settings.UserName, _settings.Password, _settings.SystemId, _settings.TestFlag, stoppingToken).ConfigureAwait(false);
+                        _settings.UserName, _settings.Password, _settings.SystemId, _settings.TestFlag, sessionCts.Token).ConfigureAwait(false);
 
                     consecutiveFailures = 0;
-                    _logger.LogInformation("[PostMarker] Connected.");
+                    _sessionId = sessionId;
+                    SetState(PostMarkerConnectionState.Connected, null);
+                    Report(LogLevel.Information, "Connected.");
                     _heartbeat.SessionOnline(SessionKey);
 
-                    await RunSessionAsync(sessionId, stoppingToken).ConfigureAwait(false);
+                    await RunSessionAsync(sessionId, sessionCts.Token).ConfigureAwait(false);
                 }
                 catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
                 {
                     break;
                 }
+                catch (OperationCanceledException) when (IsReconnectRequested())
+                {
+                    // Reconnect clicked in the UI — reported by RequestReconnect.
+                }
                 catch (Exception ex)
                 {
-                    _logger.LogError(ex, "[PostMarker] Session failed.");
+                    failure = ex.Message;
+                    Report(LogLevel.Error, $"Session failed: {ex.Message}", ex);
                 }
                 finally
                 {
+                    _sessionId = null;
+                    lock (_sync) _sessionCts = null;
+
                     _heartbeat.SessionOffline(SessionKey);
 
                     if (sessionId != null)
                         await TryDisconnectAsync(sessionId).ConfigureAwait(false);
                 }
 
-                var delay = ReconnectDelays[Math.Min(consecutiveFailures, ReconnectDelays.Length - 1)];
-                consecutiveFailures++;
-                _logger.LogInformation("[PostMarker] Reconnecting in {Seconds} s.", delay.TotalSeconds);
-
-                try
+                TimeSpan delay;
+                if (TakeReconnectRequest())
                 {
-                    await Task.Delay(delay, stoppingToken).ConfigureAwait(false);
+                    delay = TimeSpan.Zero;
+                    consecutiveFailures = 0;
                 }
-                catch (OperationCanceledException)
+                else
                 {
-                    break;
+                    delay = ReconnectDelays[Math.Min(consecutiveFailures, ReconnectDelays.Length - 1)];
+                    consecutiveFailures++;
+                }
+
+                if (delay > TimeSpan.Zero)
+                {
+                    SetState(PostMarkerConnectionState.Reconnecting, failure, DateTime.UtcNow + delay);
+                    Report(LogLevel.Information, $"Reconnecting in {delay.TotalSeconds:0} s.");
+
+                    using var waitCts = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
+                    lock (_sync) _waitCts = waitCts;
+
+                    try
+                    {
+                        await Task.Delay(delay, waitCts.Token).ConfigureAwait(false);
+                    }
+                    catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+                    {
+                        break;
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        // Reconnect clicked while waiting — connect now.
+                    }
+                    finally
+                    {
+                        lock (_sync) _waitCts = null;
+                    }
                 }
             }
 
-            _logger.LogInformation("[PostMarker] Stopped.");
+            SetState(PostMarkerConnectionState.Stopped, null);
+            Report(LogLevel.Information, "Stopped.");
         }
 
         /// <summary>
-        /// Runs the receive and accept loops until one of them fails or the gateway stops. The
-        /// failure is rethrown so the caller drops the session and connects a new one.
+        /// Runs the receive and accept loops until one of them fails or the session is cancelled.
+        /// The failure is rethrown so the caller drops the session and connects a new one.
         /// </summary>
-        private async Task RunSessionAsync(string sessionId, CancellationToken stoppingToken)
+        private async Task RunSessionAsync(string sessionId, CancellationToken sessionToken)
         {
-            using var sessionCts = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
+            using var loopsCts = CancellationTokenSource.CreateLinkedTokenSource(sessionToken);
 
-            var receive = ReceiveLoopAsync(sessionId, sessionCts.Token);
-            var accept = AcceptLoopAsync(sessionId, sessionCts.Token);
+            var receive = ReceiveLoopAsync(sessionId, loopsCts.Token);
+            var accept = AcceptLoopAsync(sessionId, loopsCts.Token);
 
             var finished = await Task.WhenAny(receive, accept).ConfigureAwait(false);
-            sessionCts.Cancel();
+            loopsCts.Cancel();
 
             try
             {
@@ -175,6 +411,21 @@ namespace FxFixGateway.Infrastructure.PostMarker
             }
 
             await finished.ConfigureAwait(false);
+        }
+
+        private bool IsReconnectRequested()
+        {
+            lock (_sync) return _reconnectRequested;
+        }
+
+        private bool TakeReconnectRequest()
+        {
+            lock (_sync)
+            {
+                var requested = _reconnectRequested;
+                _reconnectRequested = false;
+                return requested;
+            }
         }
 
         // ────────────────────────────────────
@@ -203,22 +454,33 @@ namespace FxFixGateway.Infrastructure.PostMarker
         /// </summary>
         private async Task HandlePayloadAsync(string sessionId, PostMarkerPayload payload, CancellationToken ct)
         {
+            var isNewDeal = false;
+
             if (!string.Equals(payload.Status, "RECEIVED", StringComparison.OrdinalIgnoreCase))
             {
                 // ACCEPTED is PostMarker's echo of our own Accept — not a new deal.
-                _logger.LogInformation("[PostMarker] SeqNo={Seq} status {Status} — not a new deal, not stored.",
-                    payload.SequenceNumber, payload.Status);
+                Report(LogLevel.Information, $"SeqNo={payload.SequenceNumber} status {payload.Status} — not a new deal, not stored.");
             }
             else if (string.IsNullOrWhiteSpace(payload.Xml))
             {
-                _logger.LogWarning("[PostMarker] SeqNo={Seq} RECEIVED without XML — not stored.", payload.SequenceNumber);
+                Report(LogLevel.Warning, $"SeqNo={payload.SequenceNumber} RECEIVED without XML — not stored.");
             }
             else
             {
                 StoreAndParse(payload);
+                isNewDeal = true;
+            }
+
+            if (isNewDeal)
+            {
+                Raise(PayloadReceived, new PostMarkerPayloadInfo(
+                    payload.SequenceNumber, "RECEIVED", DateTime.UtcNow, payload.Xml, Acknowledged: false, Accepted: false));
             }
 
             await _client.AcknowledgeAsync(sessionId, payload.SequenceNumber, ct).ConfigureAwait(false);
+
+            if (isNewDeal)
+                Raise(PayloadAcknowledged, payload.SequenceNumber);
         }
 
         /// <summary>
@@ -232,7 +494,7 @@ namespace FxFixGateway.Infrastructure.PostMarker
 
             if (_messageInRepository.ExistsBySourceMessageKey(SourceType, messageKey))
             {
-                _logger.LogInformation("[PostMarker] SeqNo={Seq} already stored — skipped.", payload.SequenceNumber);
+                Report(LogLevel.Information, $"SeqNo={payload.SequenceNumber} already stored — skipped.");
                 return;
             }
 
@@ -250,7 +512,7 @@ namespace FxFixGateway.Infrastructure.PostMarker
                 ParsedFlag = false
             });
 
-            _logger.LogInformation("[PostMarker] SeqNo={Seq} stored as MessageInId {MessageInId}.", payload.SequenceNumber, messageInId);
+            Report(LogLevel.Information, $"SeqNo={payload.SequenceNumber} stored as MessageInId {messageInId}.");
 
             try
             {
@@ -259,8 +521,7 @@ namespace FxFixGateway.Infrastructure.PostMarker
             catch (Exception ex)
             {
                 // The payload is stored and can be reprocessed from the Blotter, so it is still acknowledged.
-                _logger.LogError(ex, "[PostMarker] Parsing MessageInId {MessageInId} (SeqNo={Seq}) failed.",
-                    messageInId, payload.SequenceNumber);
+                Report(LogLevel.Error, $"Parsing MessageInId {messageInId} (SeqNo={payload.SequenceNumber}) failed: {ex.Message}", ex);
             }
         }
 
@@ -310,8 +571,7 @@ namespace FxFixGateway.Infrastructure.PostMarker
             }
             catch (PostMarkerFaultException ex)
             {
-                _logger.LogError("[PostMarker] Accept refused for SeqNo={Seq} (StpTradeId {StpTradeId}): {Error}",
-                    seq, link.StpTradeId, ex.Message);
+                Report(LogLevel.Error, $"Accept refused for SeqNo={seq} (StpTradeId {link.StpTradeId}): {ex.Message}");
                 await TryUpdateLinkAsync(link.StpTradeId, "ACK_ERROR", ex.Message).ConfigureAwait(false);
                 return;
             }
@@ -328,7 +588,8 @@ namespace FxFixGateway.Infrastructure.PostMarker
                 _logger.LogWarning(ex, "[PostMarker] Workflow event for StpTradeId {StpTradeId} failed.", link.StpTradeId);
             }
 
-            _logger.LogInformation("[PostMarker] Accept sent: SeqNo={Seq}, StpTradeId={StpTradeId}.", seq, link.StpTradeId);
+            Report(LogLevel.Information, $"Accept sent: SeqNo={seq}, StpTradeId={link.StpTradeId}.");
+            Raise(PayloadAccepted, seq);
         }
 
         private async Task TryUpdateLinkAsync(long stpTradeId, string status, string? lastError)
@@ -339,8 +600,7 @@ namespace FxFixGateway.Infrastructure.PostMarker
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "[PostMarker] Setting POST_MARKER_ACCEPT to {Status} for StpTradeId {StpTradeId} failed.",
-                    status, stpTradeId);
+                Report(LogLevel.Error, $"Setting POST_MARKER_ACCEPT to {status} for StpTradeId {stpTradeId} failed: {ex.Message}", ex);
             }
         }
 
@@ -350,12 +610,57 @@ namespace FxFixGateway.Infrastructure.PostMarker
             {
                 using var timeout = new CancellationTokenSource(DisconnectTimeout);
                 await _client.DisconnectAsync(sessionId, timeout.Token).ConfigureAwait(false);
-                _logger.LogInformation("[PostMarker] Disconnected.");
+                Report(LogLevel.Information, "Disconnected.");
             }
             catch (Exception ex)
             {
-                _logger.LogWarning("[PostMarker] Disconnect failed: {Error}", ex.Message);
+                Report(LogLevel.Warning, $"Disconnect failed: {ex.Message}");
             }
+        }
+
+        // ────────────────────────────────────
+        // State, activity log and events
+        // ────────────────────────────────────
+
+        private void SetState(PostMarkerConnectionState state, string? detail, DateTime? nextConnectUtc = null)
+        {
+            lock (_sync)
+            {
+                _state = state;
+                _stateDetail = detail;
+                _nextConnectUtc = nextConnectUtc;
+            }
+
+            Raise(StateChanged);
+        }
+
+        /// <summary>Writes the line to the gateway log ("[PostMarker] ...") and to the UI's activity log.</summary>
+        private void Report(LogLevel level, string message, Exception? exception = null)
+        {
+            _logger.Log(level, exception, "[PostMarker] {Message}", message);
+
+            var activity = new PostMarkerActivity(DateTime.UtcNow, level, message);
+            lock (_sync)
+            {
+                _recentActivity.Enqueue(activity);
+                while (_recentActivity.Count > MaxBufferedActivity)
+                    _recentActivity.Dequeue();
+            }
+
+            Raise(ActivityLogged, activity);
+        }
+
+        // A failing UI handler must never stop the service.
+        private void Raise(EventHandler? handler)
+        {
+            try { handler?.Invoke(this, EventArgs.Empty); }
+            catch (Exception ex) { _logger.LogDebug(ex, "[PostMarker] UI event handler failed."); }
+        }
+
+        private void Raise<T>(EventHandler<T>? handler, T args)
+        {
+            try { handler?.Invoke(this, args); }
+            catch (Exception ex) { _logger.LogDebug(ex, "[PostMarker] UI event handler failed."); }
         }
     }
 }

@@ -1,0 +1,393 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!--
+        Gateway dark theme: palette, cards, pills, buttons and text styles.
+        Self-contained (no MaterialDesign keys) so it can be merged as its own dictionary;
+        styles based on MaterialDesign live in App.xaml.
+    -->
+
+    <!-- ──────────── Palette ──────────── -->
+    <Color x:Key="Gw.Color.Window">#0B1120</Color>
+    <Color x:Key="Gw.Color.Card">#111A2C</Color>
+    <Color x:Key="Gw.Color.CardRaised">#17223A</Color>
+    <Color x:Key="Gw.Color.Border">#1F2B42</Color>
+    <Color x:Key="Gw.Color.Input">#0D1526</Color>
+    <Color x:Key="Gw.Color.Text">#E6EAF2</Color>
+    <Color x:Key="Gw.Color.TextMuted">#8A95AB</Color>
+    <Color x:Key="Gw.Color.TextFaint">#5D6A82</Color>
+    <Color x:Key="Gw.Color.Accent">#5B6CFF</Color>
+    <Color x:Key="Gw.Color.Green">#22C55E</Color>
+    <Color x:Key="Gw.Color.Amber">#F59E0B</Color>
+    <Color x:Key="Gw.Color.Red">#EF4444</Color>
+    <Color x:Key="Gw.Color.Blue">#3B82F6</Color>
+    <Color x:Key="Gw.Color.Grey">#64748B</Color>
+
+    <SolidColorBrush x:Key="Gw.Brush.Window" Color="{StaticResource Gw.Color.Window}"/>
+    <SolidColorBrush x:Key="Gw.Brush.Card" Color="{StaticResource Gw.Color.Card}"/>
+    <SolidColorBrush x:Key="Gw.Brush.CardRaised" Color="{StaticResource Gw.Color.CardRaised}"/>
+    <SolidColorBrush x:Key="Gw.Brush.Border" Color="{StaticResource Gw.Color.Border}"/>
+    <SolidColorBrush x:Key="Gw.Brush.Input" Color="{StaticResource Gw.Color.Input}"/>
+    <SolidColorBrush x:Key="Gw.Brush.Text" Color="{StaticResource Gw.Color.Text}"/>
+    <SolidColorBrush x:Key="Gw.Brush.TextMuted" Color="{StaticResource Gw.Color.TextMuted}"/>
+    <SolidColorBrush x:Key="Gw.Brush.TextFaint" Color="{StaticResource Gw.Color.TextFaint}"/>
+    <SolidColorBrush x:Key="Gw.Brush.Accent" Color="{StaticResource Gw.Color.Accent}"/>
+    <SolidColorBrush x:Key="Gw.Brush.Green" Color="{StaticResource Gw.Color.Green}"/>
+    <SolidColorBrush x:Key="Gw.Brush.Amber" Color="{StaticResource Gw.Color.Amber}"/>
+    <SolidColorBrush x:Key="Gw.Brush.Red" Color="{StaticResource Gw.Color.Red}"/>
+    <SolidColorBrush x:Key="Gw.Brush.Blue" Color="{StaticResource Gw.Color.Blue}"/>
+    <SolidColorBrush x:Key="Gw.Brush.Grey" Color="{StaticResource Gw.Color.Grey}"/>
+
+    <!-- Tinted backgrounds and outlines for pills, status buttons and row highlights -->
+    <SolidColorBrush x:Key="Gw.Brush.AccentSoft" Color="#265B6CFF"/>
+    <SolidColorBrush x:Key="Gw.Brush.AccentLine" Color="#665B6CFF"/>
+    <SolidColorBrush x:Key="Gw.Brush.GreenSoft" Color="#1F22C55E"/>
+    <SolidColorBrush x:Key="Gw.Brush.GreenLine" Color="#5922C55E"/>
+    <SolidColorBrush x:Key="Gw.Brush.AmberSoft" Color="#1FF59E0B"/>
+    <SolidColorBrush x:Key="Gw.Brush.AmberLine" Color="#59F59E0B"/>
+    <SolidColorBrush x:Key="Gw.Brush.RedSoft" Color="#1FEF4444"/>
+    <SolidColorBrush x:Key="Gw.Brush.RedLine" Color="#59EF4444"/>
+    <SolidColorBrush x:Key="Gw.Brush.BlueSoft" Color="#1F3B82F6"/>
+    <SolidColorBrush x:Key="Gw.Brush.BlueLine" Color="#593B82F6"/>
+    <SolidColorBrush x:Key="Gw.Brush.GreySoft" Color="#1F64748B"/>
+    <SolidColorBrush x:Key="Gw.Brush.GreyLine" Color="#5964748B"/>
+    <SolidColorBrush x:Key="Gw.Brush.Hover" Color="#0DFFFFFF"/>
+    <SolidColorBrush x:Key="Gw.Brush.Overlay" Color="#CC0B1120"/>
+
+    <LinearGradientBrush x:Key="Gw.Brush.Logo" StartPoint="0,0" EndPoint="1,1">
+        <GradientStop Color="#5B6CFF" Offset="0"/>
+        <GradientStop Color="#8B5CF6" Offset="1"/>
+    </LinearGradientBrush>
+
+    <FontFamily x:Key="Gw.Font.Mono">Cascadia Mono, Consolas</FontFamily>
+
+    <!-- ──────────── Cards ──────────── -->
+    <Style x:Key="Gw.Card" TargetType="Border">
+        <Setter Property="Background" Value="{StaticResource Gw.Brush.Card}"/>
+        <Setter Property="BorderBrush" Value="{StaticResource Gw.Brush.Border}"/>
+        <Setter Property="BorderThickness" Value="1"/>
+        <Setter Property="CornerRadius" Value="12"/>
+        <Setter Property="Padding" Value="16"/>
+        <Setter Property="SnapsToDevicePixels" Value="True"/>
+    </Style>
+
+    <!-- Smaller card inside a card (statistics, overview values) -->
+    <Style x:Key="Gw.InnerCard" TargetType="Border">
+        <Setter Property="Background" Value="{StaticResource Gw.Brush.Input}"/>
+        <Setter Property="BorderBrush" Value="{StaticResource Gw.Brush.Border}"/>
+        <Setter Property="BorderThickness" Value="1"/>
+        <Setter Property="CornerRadius" Value="10"/>
+        <Setter Property="Padding" Value="14,10"/>
+        <Setter Property="SnapsToDevicePixels" Value="True"/>
+    </Style>
+
+    <!-- ──────────── Text ──────────── -->
+    <!-- Small upper-case section label, e.g. "FIX SESSIONS" -->
+    <Style x:Key="Gw.Label" TargetType="TextBlock">
+        <Setter Property="FontSize" Value="11"/>
+        <Setter Property="FontWeight" Value="SemiBold"/>
+        <Setter Property="Foreground" Value="{StaticResource Gw.Brush.TextFaint}"/>
+    </Style>
+
+    <Style x:Key="Gw.Title" TargetType="TextBlock">
+        <Setter Property="FontSize" Value="16"/>
+        <Setter Property="FontWeight" Value="SemiBold"/>
+        <Setter Property="Foreground" Value="{StaticResource Gw.Brush.Text}"/>
+    </Style>
+
+    <Style x:Key="Gw.PageTitle" TargetType="TextBlock">
+        <Setter Property="FontSize" Value="20"/>
+        <Setter Property="FontWeight" Value="SemiBold"/>
+        <Setter Property="Foreground" Value="{StaticResource Gw.Brush.Text}"/>
+    </Style>
+
+    <Style x:Key="Gw.Muted" TargetType="TextBlock">
+        <Setter Property="FontSize" Value="12"/>
+        <Setter Property="Foreground" Value="{StaticResource Gw.Brush.TextMuted}"/>
+        <Setter Property="TextTrimming" Value="CharacterEllipsis"/>
+    </Style>
+
+    <Style x:Key="Gw.Faint" TargetType="TextBlock">
+        <Setter Property="FontSize" Value="11"/>
+        <Setter Property="Foreground" Value="{StaticResource Gw.Brush.TextFaint}"/>
+        <Setter Property="TextTrimming" Value="CharacterEllipsis"/>
+    </Style>
+
+    <!-- Big number / value in a summary card -->
+    <Style x:Key="Gw.Value" TargetType="TextBlock">
+        <Setter Property="FontSize" Value="22"/>
+        <Setter Property="FontWeight" Value="SemiBold"/>
+        <Setter Property="Foreground" Value="{StaticResource Gw.Brush.Text}"/>
+        <Setter Property="TextTrimming" Value="CharacterEllipsis"/>
+    </Style>
+
+    <!-- Value in an overview / statistics inner card -->
+    <Style x:Key="Gw.SmallValue" TargetType="TextBlock">
+        <Setter Property="FontSize" Value="14"/>
+        <Setter Property="FontWeight" Value="SemiBold"/>
+        <Setter Property="Foreground" Value="{StaticResource Gw.Brush.Text}"/>
+        <Setter Property="Margin" Value="0,4,0,0"/>
+        <Setter Property="TextTrimming" Value="CharacterEllipsis"/>
+    </Style>
+
+    <!-- Field caption in a details form -->
+    <Style x:Key="Gw.FieldLabel" TargetType="TextBlock">
+        <Setter Property="FontSize" Value="12"/>
+        <Setter Property="Foreground" Value="{StaticResource Gw.Brush.TextMuted}"/>
+        <Setter Property="VerticalAlignment" Value="Center"/>
+        <Setter Property="Margin" Value="0,0,12,0"/>
+    </Style>
+
+    <!-- Read-only value that can still be selected and copied -->
+    <Style x:Key="Gw.ValueBox" TargetType="TextBox">
+        <Setter Property="IsReadOnly" Value="True"/>
+        <Setter Property="Foreground" Value="{StaticResource Gw.Brush.Text}"/>
+        <Setter Property="FontSize" Value="13"/>
+        <Setter Property="VerticalAlignment" Value="Center"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="TextBox">
+                    <ScrollViewer x:Name="PART_ContentHost"
+                                  Background="Transparent"
+                                  VerticalAlignment="Center"
+                                  Focusable="False"
+                                  HorizontalScrollBarVisibility="Hidden"
+                                  VerticalScrollBarVisibility="Hidden"/>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- Monospaced read-only text area: raw FIX messages, BrokerML XML -->
+    <Style x:Key="Gw.CodeBox" TargetType="TextBox">
+        <Setter Property="IsReadOnly" Value="True"/>
+        <Setter Property="Foreground" Value="#C7D2E6"/>
+        <Setter Property="Background" Value="{StaticResource Gw.Brush.Input}"/>
+        <Setter Property="FontFamily" Value="{StaticResource Gw.Font.Mono}"/>
+        <Setter Property="FontSize" Value="12"/>
+        <Setter Property="Padding" Value="12,10"/>
+        <Setter Property="TextWrapping" Value="Wrap"/>
+        <Setter Property="VerticalScrollBarVisibility" Value="Auto"/>
+        <Setter Property="HorizontalScrollBarVisibility" Value="Disabled"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="TextBox">
+                    <Border Background="{TemplateBinding Background}" CornerRadius="8">
+                        <ScrollViewer x:Name="PART_ContentHost"
+                                      Margin="{TemplateBinding Padding}"
+                                      Focusable="False"/>
+                    </Border>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- ──────────── Pills and dots ──────────── -->
+    <Style x:Key="Gw.Pill" TargetType="Border">
+        <Setter Property="CornerRadius" Value="11"/>
+        <Setter Property="Padding" Value="9,3"/>
+        <Setter Property="BorderThickness" Value="1"/>
+        <Setter Property="Background" Value="{StaticResource Gw.Brush.GreySoft}"/>
+        <Setter Property="BorderBrush" Value="{StaticResource Gw.Brush.GreyLine}"/>
+        <Setter Property="TextElement.Foreground" Value="{StaticResource Gw.Brush.TextMuted}"/>
+        <Setter Property="TextElement.FontSize" Value="11"/>
+        <Setter Property="TextElement.FontWeight" Value="SemiBold"/>
+        <Setter Property="HorizontalAlignment" Value="Left"/>
+        <Setter Property="VerticalAlignment" Value="Center"/>
+        <Setter Property="SnapsToDevicePixels" Value="True"/>
+    </Style>
+
+    <Style x:Key="Gw.Pill.Green" TargetType="Border" BasedOn="{StaticResource Gw.Pill}">
+        <Setter Property="Background" Value="{StaticResource Gw.Brush.GreenSoft}"/>
+        <Setter Property="BorderBrush" Value="{StaticResource Gw.Brush.GreenLine}"/>
+        <Setter Property="TextElement.Foreground" Value="{StaticResource Gw.Brush.Green}"/>
+    </Style>
+
+    <Style x:Key="Gw.Pill.Amber" TargetType="Border" BasedOn="{StaticResource Gw.Pill}">
+        <Setter Property="Background" Value="{StaticResource Gw.Brush.AmberSoft}"/>
+        <Setter Property="BorderBrush" Value="{StaticResource Gw.Brush.AmberLine}"/>
+        <Setter Property="TextElement.Foreground" Value="{StaticResource Gw.Brush.Amber}"/>
+    </Style>
+
+    <Style x:Key="Gw.Pill.Red" TargetType="Border" BasedOn="{StaticResource Gw.Pill}">
+        <Setter Property="Background" Value="{StaticResource Gw.Brush.RedSoft}"/>
+        <Setter Property="BorderBrush" Value="{StaticResource Gw.Brush.RedLine}"/>
+        <Setter Property="TextElement.Foreground" Value="{StaticResource Gw.Brush.Red}"/>
+    </Style>
+
+    <Style x:Key="Gw.Pill.Blue" TargetType="Border" BasedOn="{StaticResource Gw.Pill}">
+        <Setter Property="Background" Value="{StaticResource Gw.Brush.BlueSoft}"/>
+        <Setter Property="BorderBrush" Value="{StaticResource Gw.Brush.BlueLine}"/>
+        <Setter Property="TextElement.Foreground" Value="{StaticResource Gw.Brush.Blue}"/>
+    </Style>
+
+    <Style x:Key="Gw.Pill.Accent" TargetType="Border" BasedOn="{StaticResource Gw.Pill}">
+        <Setter Property="Background" Value="{StaticResource Gw.Brush.AccentSoft}"/>
+        <Setter Property="BorderBrush" Value="{StaticResource Gw.Brush.AccentLine}"/>
+        <Setter Property="TextElement.Foreground" Value="#AEB7FF"/>
+    </Style>
+
+    <Style x:Key="Gw.Dot" TargetType="Ellipse">
+        <Setter Property="Width" Value="8"/>
+        <Setter Property="Height" Value="8"/>
+        <Setter Property="VerticalAlignment" Value="Center"/>
+    </Style>
+
+    <!-- ──────────── Buttons ──────────── -->
+    <!-- Base: outlined, rounded. Variants below only change colours. -->
+    <Style x:Key="Gw.Button" TargetType="Button">
+        <Setter Property="Foreground" Value="{StaticResource Gw.Brush.Text}"/>
+        <Setter Property="Background" Value="Transparent"/>
+        <Setter Property="BorderBrush" Value="{StaticResource Gw.Brush.Border}"/>
+        <Setter Property="BorderThickness" Value="1"/>
+        <Setter Property="Padding" Value="14,7"/>
+        <Setter Property="FontSize" Value="13"/>
+        <Setter Property="FontWeight" Value="SemiBold"/>
+        <Setter Property="Cursor" Value="Hand"/>
+        <Setter Property="SnapsToDevicePixels" Value="True"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Grid>
+                        <Border Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="8">
+                            <ContentPresenter Margin="{TemplateBinding Padding}"
+                                              HorizontalAlignment="Center"
+                                              VerticalAlignment="Center"
+                                              RecognizesAccessKey="True"/>
+                        </Border>
+                        <Border x:Name="Highlight"
+                                CornerRadius="8"
+                                Background="White"
+                                Opacity="0"
+                                IsHitTestVisible="False"/>
+                    </Grid>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Highlight" Property="Opacity" Value="0.06"/>
+                        </Trigger>
+                        <Trigger Property="IsPressed" Value="True">
+                            <Setter TargetName="Highlight" Property="Opacity" Value="0.12"/>
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter Property="Opacity" Value="0.4"/>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <Style x:Key="Gw.Button.Primary" TargetType="Button" BasedOn="{StaticResource Gw.Button}">
+        <Setter Property="Background" Value="{StaticResource Gw.Brush.Accent}"/>
+        <Setter Property="BorderBrush" Value="{StaticResource Gw.Brush.Accent}"/>
+        <Setter Property="Foreground" Value="White"/>
+    </Style>
+
+    <Style x:Key="Gw.Button.Success" TargetType="Button" BasedOn="{StaticResource Gw.Button}">
+        <Setter Property="Background" Value="{StaticResource Gw.Brush.GreenSoft}"/>
+        <Setter Property="BorderBrush" Value="{StaticResource Gw.Brush.GreenLine}"/>
+        <Setter Property="Foreground" Value="{StaticResource Gw.Brush.Green}"/>
+    </Style>
+
+    <Style x:Key="Gw.Button.Danger" TargetType="Button" BasedOn="{StaticResource Gw.Button}">
+        <Setter Property="Background" Value="{StaticResource Gw.Brush.RedSoft}"/>
+        <Setter Property="BorderBrush" Value="{StaticResource Gw.Brush.RedLine}"/>
+        <Setter Property="Foreground" Value="{StaticResource Gw.Brush.Red}"/>
+    </Style>
+
+    <Style x:Key="Gw.Button.Warning" TargetType="Button" BasedOn="{StaticResource Gw.Button}">
+        <Setter Property="Background" Value="{StaticResource Gw.Brush.AmberSoft}"/>
+        <Setter Property="BorderBrush" Value="{StaticResource Gw.Brush.AmberLine}"/>
+        <Setter Property="Foreground" Value="{StaticResource Gw.Brush.Amber}"/>
+    </Style>
+
+    <!-- Square button with only an icon -->
+    <Style x:Key="Gw.IconButton" TargetType="Button" BasedOn="{StaticResource Gw.Button}">
+        <Setter Property="Padding" Value="0"/>
+        <Setter Property="Width" Value="34"/>
+        <Setter Property="Height" Value="34"/>
+        <Setter Property="Foreground" Value="{StaticResource Gw.Brush.TextMuted}"/>
+    </Style>
+
+    <!-- Button used as a clickable list card (PostMarker in the connection list) -->
+    <Style x:Key="Gw.CardButton" TargetType="Button">
+        <Setter Property="Foreground" Value="{StaticResource Gw.Brush.Text}"/>
+        <Setter Property="Background" Value="{StaticResource Gw.Brush.Card}"/>
+        <Setter Property="BorderBrush" Value="{StaticResource Gw.Brush.Border}"/>
+        <Setter Property="BorderThickness" Value="1"/>
+        <Setter Property="Padding" Value="16,12"/>
+        <Setter Property="Cursor" Value="Hand"/>
+        <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+        <Setter Property="SnapsToDevicePixels" Value="True"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Grid>
+                        <Border Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="12">
+                            <ContentPresenter Margin="{TemplateBinding Padding}"
+                                              HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"/>
+                        </Border>
+                        <Border x:Name="Highlight"
+                                CornerRadius="12"
+                                Background="White"
+                                Opacity="0"
+                                IsHitTestVisible="False"/>
+                    </Grid>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Highlight" Property="Opacity" Value="0.04"/>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- ──────────── List rows ──────────── -->
+    <!-- Rounded row with an accent bar on the left when selected (session list) -->
+    <Style x:Key="Gw.ListRow" TargetType="ListBoxItem">
+        <Setter Property="Padding" Value="12,10"/>
+        <Setter Property="Margin" Value="0,2"/>
+        <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+        <Setter Property="Foreground" Value="{StaticResource Gw.Brush.Text}"/>
+        <Setter Property="Cursor" Value="Hand"/>
+        <Setter Property="SnapsToDevicePixels" Value="True"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ListBoxItem">
+                    <Border x:Name="Row"
+                            Background="Transparent"
+                            CornerRadius="10">
+                        <Grid>
+                            <Border x:Name="AccentBar"
+                                    Width="3"
+                                    Margin="0,8"
+                                    HorizontalAlignment="Left"
+                                    CornerRadius="2"
+                                    Background="{StaticResource Gw.Brush.Accent}"
+                                    Visibility="Collapsed"/>
+                            <ContentPresenter Margin="{TemplateBinding Padding}"
+                                              HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"/>
+                        </Grid>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Row" Property="Background" Value="{StaticResource Gw.Brush.Hover}"/>
+                        </Trigger>
+                        <Trigger Property="IsSelected" Value="True">
+                            <Setter TargetName="Row" Property="Background" Value="{StaticResource Gw.Brush.CardRaised}"/>
+                            <Setter TargetName="AccentBar" Property="Visibility" Value="Visible"/>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+</ResourceDictionary>

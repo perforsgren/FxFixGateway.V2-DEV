@@ -256,27 +256,27 @@ namespace FxFixGateway.UI
 
             services.AddSingleton<ISecurityListService>(sp =>
             {
-                var subRepo      = sp.GetRequiredService<IMarketSubscriptionRepository>();
-                var instrRepo    = sp.GetRequiredService<IMarketInstrumentRepository>();
+                var subRepo = sp.GetRequiredService<IMarketSubscriptionRepository>();
+                var instrRepo = sp.GetRequiredService<IMarketInstrumentRepository>();
                 var orchestrator = sp.GetRequiredService<IMarketDataOrchestrator>();
-                var logger       = sp.GetRequiredService<ILogger<SecurityListService>>();
+                var logger = sp.GetRequiredService<ILogger<SecurityListService>>();
                 return new SecurityListService(subRepo, instrRepo, orchestrator, logger);
             });
 
             // Infrastructure - FIX Engine
             services.AddSingleton<IFixEngine>(sp =>
             {
-                var logger            = sp.GetRequiredService<ILogger<QuickFixEngine>>();
-                var dataDictPath      = Path.Combine(Directory.GetCurrentDirectory(), "FIX44_Volbroker.xml");
-                var messageInSvc      = sp.GetRequiredService<IMessageInService>();
-                var tradeOrch         = sp.GetRequiredService<IMessageInParserOrchestrator>();
-                var secListSvc        = sp.GetRequiredService<ISecurityListService>();
-                var mdOrchestrator    = sp.GetRequiredService<IMarketDataOrchestrator>();
-                var senderProxy       = sp.GetRequiredService<QuickFixSenderProxy>();
-                var mdService         = sp.GetRequiredService<IMarketDataService>();
-                var quoteRequestSvc   = sp.GetRequiredService<IQuoteRequestService>();
+                var logger = sp.GetRequiredService<ILogger<QuickFixEngine>>();
+                var dataDictPath = Path.Combine(Directory.GetCurrentDirectory(), "FIX44_Volbroker.xml");
+                var messageInSvc = sp.GetRequiredService<IMessageInService>();
+                var tradeOrch = sp.GetRequiredService<IMessageInParserOrchestrator>();
+                var secListSvc = sp.GetRequiredService<ISecurityListService>();
+                var mdOrchestrator = sp.GetRequiredService<IMarketDataOrchestrator>();
+                var senderProxy = sp.GetRequiredService<QuickFixSenderProxy>();
+                var mdService = sp.GetRequiredService<IMarketDataService>();
+                var quoteRequestSvc = sp.GetRequiredService<IQuoteRequestService>();
                 var heartbeatNotifier = sp.GetRequiredService<ISessionHeartbeatNotifier>();
-                var pushNotification  = sp.GetRequiredService<IPushNotificationService>(); // ← lägg till
+                var pushNotification = sp.GetRequiredService<IPushNotificationService>(); // ← lägg till
 
                 return new QuickFixEngine(
                     logger,
@@ -325,7 +325,8 @@ namespace FxFixGateway.UI
 
             services.AddSingleton<PostMarkerSoapClient>();
 
-            services.AddHostedService(sp =>
+            // Singleton as well as hosted service, so the UI's PostMarker panel can follow it.
+            services.AddSingleton(sp =>
             {
                 var messageInRepo = new MessageInRepository(stpConnectionString);
                 var lookupRepo = new MySqlStpLookupRepository(stpConnectionString);
@@ -345,6 +346,7 @@ namespace FxFixGateway.UI
                     sp.GetRequiredService<ISessionHeartbeatNotifier>(),
                     sp.GetRequiredService<ILogger<PostMarkerIngestService>>());
             });
+            services.AddHostedService(sp => sp.GetRequiredService<PostMarkerIngestService>());
 
             // ViewModels
             services.AddTransient<SessionListViewModel>();
@@ -377,10 +379,10 @@ namespace FxFixGateway.UI
 
             services.AddSingleton<IQuoteRequestService>(sp =>
             {
-                var quoteRepo    = sp.GetRequiredService<IQuoteRequestRepository>();
-                var instrRepo    = sp.GetRequiredService<IMarketInstrumentRepository>();
-                var subRepo      = sp.GetRequiredService<IMarketSubscriptionRepository>();
-                var logger       = sp.GetRequiredService<ILogger<QuoteRequestService>>();
+                var quoteRepo = sp.GetRequiredService<IQuoteRequestRepository>();
+                var instrRepo = sp.GetRequiredService<IMarketInstrumentRepository>();
+                var subRepo = sp.GetRequiredService<IMarketSubscriptionRepository>();
+                var logger = sp.GetRequiredService<ILogger<QuoteRequestService>>();
                 return new QuoteRequestService(quoteRepo, instrRepo, subRepo, logger);
             });
 
@@ -408,11 +410,11 @@ namespace FxFixGateway.UI
         {
             var builder = new MySql.Data.MySqlClient.MySqlConnectionStringBuilder(connectionString)
             {
-                MinimumPoolSize       = (uint)minPoolSize,
-                MaximumPoolSize       = (uint)maxPoolSize,
-                ConnectionTimeout     = 30,
+                MinimumPoolSize = (uint)minPoolSize,
+                MaximumPoolSize = (uint)maxPoolSize,
+                ConnectionTimeout = 30,
                 DefaultCommandTimeout = 30,
-                ConnectionLifeTime    = 30  // Idle connections stängs efter 30s — pool shrinks snabbt efter startup-spik
+                ConnectionLifeTime = 30  // Idle connections stängs efter 30s — pool shrinks snabbt efter startup-spik
             };
             return builder.ConnectionString;
         }

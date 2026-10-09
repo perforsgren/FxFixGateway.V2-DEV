@@ -8,108 +8,292 @@
         xmlns:views="clr-namespace:FxFixGateway.UI.Views"
         mc:Ignorable="d"
         Title="Fx Fix Gateway"
-        Height="800" 
-        Width="1400"
-        MinHeight="600"
-        MinWidth="1000"
-        Background="{DynamicResource MaterialDesignPaper}"
-        TextElement.Foreground="{DynamicResource MaterialDesignBody}"
-        FontFamily="{materialDesign:MaterialDesignFont}"
+        Height="860"
+        Width="1440"
+        MinHeight="640"
+        MinWidth="1100"
+        Background="{StaticResource Gw.Brush.Window}"
+        TextElement.Foreground="{StaticResource Gw.Brush.Text}"
+        FontFamily="Segoe UI"
         d:DataContext="{d:DesignInstance Type=vm:MainViewModel}"
         Loaded="Window_Loaded">
- 
 
-    <Window.Resources>
-        <!-- Styles här senare -->
-    </Window.Resources>
-
-    <Grid>
+    <Grid Margin="16">
         <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
-        <!-- Menu Bar -->
-        <Menu Grid.Row="0" Background="{DynamicResource MaterialDesignPaper}">
-            <MenuItem Header="_File">
-                <MenuItem Header="_Refresh All" Command="{Binding RefreshAllCommand}"/>
-                <Separator/>
-                <MenuItem Header="E_xit" Command="{Binding ExitCommand}"/>
-            </MenuItem>
-            <MenuItem Header="_Help">
-                <MenuItem Header="_About"/>
-            </MenuItem>
-        </Menu>
+        <!-- ──────────── Header ──────────── -->
+        <Border Grid.Row="0" Style="{StaticResource Gw.Card}" Padding="16,12">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
 
-        <!-- Main Content Area -->
-        <Grid Grid.Row="1" Margin="8">
+                <Border Grid.Column="0"
+                        Width="40" Height="40"
+                        CornerRadius="10"
+                        Background="{StaticResource Gw.Brush.Logo}"
+                        Margin="0,0,14,0">
+                    <materialDesign:PackIcon Kind="SwapHorizontal"
+                                             Width="22" Height="22"
+                                             Foreground="White"
+                                             HorizontalAlignment="Center"
+                                             VerticalAlignment="Center"/>
+                </Border>
+
+                <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                    <TextBlock Text="FX FIX Gateway" Style="{StaticResource Gw.Title}"/>
+                    <TextBlock Text="FIX sessions · PostMarker · STP into trade_stp" Style="{StaticResource Gw.Muted}"/>
+                </StackPanel>
+
+                <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+
+                    <!-- FIX sessions logged on -->
+                    <Border Style="{StaticResource Gw.Pill}"
+                            Margin="0,0,8,0"
+                            Background="{Binding SessionList.SessionsStateColor, Converter={StaticResource HexToBrush}, ConverterParameter=0.12}"
+                            BorderBrush="{Binding SessionList.SessionsStateColor, Converter={StaticResource HexToBrush}, ConverterParameter=0.35}">
+                        <StackPanel Orientation="Horizontal">
+                            <Ellipse Style="{StaticResource Gw.Dot}"
+                                     Margin="0,0,6,0"
+                                     Fill="{Binding SessionList.SessionsStateColor, Converter={StaticResource HexToBrush}}"/>
+                            <TextBlock Foreground="{Binding SessionList.SessionsStateColor, Converter={StaticResource HexToBrush}}"><Run Text="FIX "/><Run Text="{Binding SessionList.LoggedOnCount, Mode=OneWay}"/><Run Text="/"/><Run Text="{Binding SessionList.Sessions.Count, Mode=OneWay}"/></TextBlock>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- PostMarker -->
+                    <Border Style="{StaticResource Gw.Pill}"
+                            Margin="0,0,8,0"
+                            Background="{Binding PostMarker.StateColor, Converter={StaticResource HexToBrush}, ConverterParameter=0.12}"
+                            BorderBrush="{Binding PostMarker.StateColor, Converter={StaticResource HexToBrush}, ConverterParameter=0.35}">
+                        <StackPanel Orientation="Horizontal">
+                            <Ellipse Style="{StaticResource Gw.Dot}"
+                                     Margin="0,0,6,0"
+                                     Fill="{Binding PostMarker.StateColor, Converter={StaticResource HexToBrush}}"/>
+                            <TextBlock Text="PostMarker"
+                                       Foreground="{Binding PostMarker.StateColor, Converter={StaticResource HexToBrush}}"/>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Who and where -->
+                    <Border Style="{StaticResource Gw.Pill}" Margin="0,0,12,0">
+                        <TextBlock Text="{Binding MachineText, Mode=OneWay}"/>
+                    </Border>
+
+                    <Button Style="{StaticResource Gw.IconButton}"
+                            Command="{Binding RefreshAllCommand}"
+                            ToolTip="Refresh sessions"
+                            Margin="0,0,8,0">
+                        <materialDesign:PackIcon Kind="Refresh" Width="18" Height="18"/>
+                    </Button>
+
+                    <Button Style="{StaticResource Gw.IconButton}"
+                            Command="{Binding OpenLogFolderCommand}"
+                            ToolTip="Open log folder">
+                        <materialDesign:PackIcon Kind="FolderOpenOutline" Width="18" Height="18"/>
+                    </Button>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- ──────────── Summary cards ──────────── -->
+        <Grid Grid.Row="1" Margin="0,12,0,0">
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="2*" MinWidth="300"/>
-                <ColumnDefinition Width="Auto"/>
-                <ColumnDefinition Width="3*" MinWidth="400"/>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="12"/>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="12"/>
+                <ColumnDefinition Width="*"/>
             </Grid.ColumnDefinitions>
 
-            <!-- Left Panel: Session List -->
-            <Border Grid.Column="0" 
-                    Background="{DynamicResource MaterialDesignCardBackground}"
-                    CornerRadius="4"
-                    Margin="0,0,4,0">
-                <views:SessionListView DataContext="{Binding SessionList}"/>
+            <!-- FIX sessions -->
+            <Border Grid.Column="0" Style="{StaticResource Gw.Card}">
+                <StackPanel>
+                    <TextBlock Text="FIX SESSIONS" Style="{StaticResource Gw.Label}"/>
+                    <TextBlock Style="{StaticResource Gw.Value}" Margin="0,6,0,2"><Run Text="{Binding SessionList.LoggedOnCount, Mode=OneWay}"/><Run Text=" / " Foreground="{StaticResource Gw.Brush.TextFaint}"/><Run Text="{Binding SessionList.Sessions.Count, Mode=OneWay}" Foreground="{StaticResource Gw.Brush.TextMuted}"/></TextBlock>
+                    <TextBlock Style="{StaticResource Gw.Muted}"><Run Text="logged on · "/><Run Text="{Binding SessionList.RunningSessionsCount, Mode=OneWay}"/><Run Text=" running"/></TextBlock>
+                </StackPanel>
             </Border>
 
-            <!-- Splitter -->
-            <GridSplitter Grid.Column="1" 
-                         Width="6" 
-                         HorizontalAlignment="Center" 
-                         VerticalAlignment="Stretch"
-                         Background="Transparent"
-                         ShowsPreview="True"/>
+            <!-- PostMarker -->
+            <Border Grid.Column="2" Style="{StaticResource Gw.Card}">
+                <StackPanel>
+                    <TextBlock Text="POSTMARKER" Style="{StaticResource Gw.Label}"/>
+                    <StackPanel Orientation="Horizontal" Margin="0,6,0,2">
+                        <Ellipse Width="10" Height="10"
+                                 VerticalAlignment="Center"
+                                 Margin="0,2,10,0"
+                                 Fill="{Binding PostMarker.StateColor, Converter={StaticResource HexToBrush}}"/>
+                        <TextBlock Text="{Binding PostMarker.StateText}"
+                                   Style="{StaticResource Gw.Value}"
+                                   Foreground="{Binding PostMarker.StateColor, Converter={StaticResource HexToBrush}}"/>
+                    </StackPanel>
+                    <TextBlock Text="{Binding PostMarker.SummaryText}" Style="{StaticResource Gw.Muted}"/>
+                </StackPanel>
+            </Border>
 
-            <!-- Right Panel: Session Detail -->
-            <Border Grid.Column="2" 
-                    Background="{DynamicResource MaterialDesignCardBackground}"
-                    CornerRadius="4"
-                    Margin="4,0,0,0">
-                <views:SessionDetailView DataContext="{Binding SessionDetail}"/>
+            <!-- Gateway -->
+            <Border Grid.Column="4" Style="{StaticResource Gw.Card}">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+
+                    <StackPanel Grid.Column="0">
+                        <TextBlock Text="GATEWAY" Style="{StaticResource Gw.Label}"/>
+                        <TextBlock Text="{Binding StartedText, Mode=OneWay}" Style="{StaticResource Gw.Value}" Margin="0,6,0,2"/>
+                        <TextBlock Text="Log: logs\gateway-yyyyMMdd.txt" Style="{StaticResource Gw.Muted}"/>
+                    </StackPanel>
+
+                    <Button Grid.Column="1"
+                            Style="{StaticResource Gw.Button}"
+                            Command="{Binding OpenLogFolderCommand}"
+                            VerticalAlignment="Bottom"
+                            Padding="12,6">
+                        <StackPanel Orientation="Horizontal">
+                            <materialDesign:PackIcon Kind="FolderOpenOutline" Width="16" Height="16" VerticalAlignment="Center"/>
+                            <TextBlock Text="Log folder" Margin="6,0,0,0" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Button>
+                </Grid>
             </Border>
         </Grid>
 
-        <!-- Status Bar -->
-        <StatusBar Grid.Row="2" Background="{DynamicResource MaterialDesignPaper}">
-            <StatusBarItem>
-                <TextBlock Text="{Binding StatusBarText}" 
-                          Margin="8,0"/>
-            </StatusBarItem>
-            <Separator/>
-            <StatusBarItem>
-                <TextBlock Text="{Binding SessionList.Sessions.Count, StringFormat='Sessions: {0}'}" 
-                          Margin="8,0"/>
-            </StatusBarItem>
-            <Separator/>
-            <StatusBarItem>
-                <TextBlock Text="{Binding SessionList.RunningSessionsCount, StringFormat='Running: {0}'}" 
-                          Margin="8,0"
-                          Foreground="#4CAF50"/>
-            </StatusBarItem>
-        </StatusBar>
+        <!-- ──────────── Connections and details ──────────── -->
+        <Grid Grid.Row="2" Margin="0,12,0,0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="360" MinWidth="280"/>
+                <ColumnDefinition Width="12"/>
+                <ColumnDefinition Width="*" MinWidth="560"/>
+            </Grid.ColumnDefinitions>
 
-        <!-- Loading Overlay -->
-        <Grid Grid.RowSpan="3" 
-              Background="#AA000000" 
+            <!-- Left: FIX sessions and PostMarker -->
+            <Grid Grid.Column="0">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="*"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+
+                <Border Grid.Row="0" Style="{StaticResource Gw.Card}" Padding="0">
+                    <views:SessionListView DataContext="{Binding SessionList}"/>
+                </Border>
+
+                <Button Grid.Row="1"
+                        Margin="0,12,0,0"
+                        Command="{Binding SelectPostMarkerCommand}">
+                    <Button.Style>
+                        <Style TargetType="Button" BasedOn="{StaticResource Gw.CardButton}">
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding IsPostMarkerSelected}" Value="True">
+                                    <Setter Property="Background" Value="{StaticResource Gw.Brush.CardRaised}"/>
+                                    <Setter Property="BorderBrush" Value="{StaticResource Gw.Brush.Accent}"/>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Button.Style>
+
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+
+                        <TextBlock Grid.Row="0" Grid.ColumnSpan="3"
+                                   Text="POSTMARKER"
+                                   Style="{StaticResource Gw.Label}"
+                                   Margin="0,0,0,8"/>
+
+                        <Ellipse Grid.Row="1" Grid.Column="0"
+                                 Style="{StaticResource Gw.Dot}"
+                                 Margin="0,0,10,0"
+                                 Fill="{Binding PostMarker.StateColor, Converter={StaticResource HexToBrush}}"/>
+
+                        <TextBlock Grid.Row="1" Grid.Column="1"
+                                   Text="FXO Hub"
+                                   FontSize="13"
+                                   FontWeight="SemiBold"
+                                   VerticalAlignment="Center"/>
+
+                        <Border Grid.Row="1" Grid.Column="2"
+                                Style="{StaticResource Gw.Pill}"
+                                Background="{Binding PostMarker.StateColor, Converter={StaticResource HexToBrush}, ConverterParameter=0.12}"
+                                BorderBrush="{Binding PostMarker.StateColor, Converter={StaticResource HexToBrush}, ConverterParameter=0.35}">
+                            <TextBlock Text="{Binding PostMarker.StateText}"
+                                       Foreground="{Binding PostMarker.StateColor, Converter={StaticResource HexToBrush}}"/>
+                        </Border>
+
+                        <TextBlock Grid.Row="2" Grid.Column="1" Grid.ColumnSpan="2"
+                                   Text="{Binding PostMarker.SummaryText}"
+                                   Style="{StaticResource Gw.Faint}"
+                                   Margin="0,4,0,0"/>
+                    </Grid>
+                </Button>
+            </Grid>
+
+            <GridSplitter Grid.Column="1"
+                          Width="12"
+                          HorizontalAlignment="Stretch"
+                          VerticalAlignment="Stretch"
+                          Background="Transparent"
+                          ShowsPreview="True"/>
+
+            <!-- Right: FIX session details, or the PostMarker panel -->
+            <Border Grid.Column="2" Style="{StaticResource Gw.Card}" Padding="0">
+                <Grid>
+                    <Grid Visibility="{Binding IsPostMarkerSelected, Converter={StaticResource InverseBooleanToVisibilityConverter}}">
+                        <views:SessionDetailView DataContext="{Binding SessionDetail}"/>
+                    </Grid>
+                    <Grid Visibility="{Binding IsPostMarkerSelected, Converter={StaticResource BooleanToVisibilityConverter}}">
+                        <views:PostMarkerView DataContext="{Binding PostMarker}"/>
+                    </Grid>
+                </Grid>
+            </Border>
+        </Grid>
+
+        <!-- ──────────── Status bar ──────────── -->
+        <Grid Grid.Row="3" Margin="4,10,4,0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+
+            <TextBlock Grid.Column="0"
+                       Text="{Binding StatusBarText}"
+                       Style="{StaticResource Gw.Muted}"/>
+
+            <TextBlock Grid.Column="1" Style="{StaticResource Gw.Faint}"><Run Text="{Binding SessionList.Sessions.Count, Mode=OneWay, StringFormat='Sessions: {0}'}"/><Run Text="   ·   "/><Run Text="{Binding SessionList.RunningSessionsCount, Mode=OneWay, StringFormat='Running: {0}'}"/></TextBlock>
+        </Grid>
+
+        <!-- ──────────── Loading overlay ──────────── -->
+        <Grid Grid.RowSpan="4"
+              Margin="-16"
+              Background="{StaticResource Gw.Brush.Overlay}"
               Visibility="{Binding IsLoading, Converter={StaticResource BooleanToVisibilityConverter}}">
-            <StackPanel HorizontalAlignment="Center" 
-                       VerticalAlignment="Center">
+            <StackPanel HorizontalAlignment="Center"
+                        VerticalAlignment="Center">
                 <ProgressBar Style="{StaticResource MaterialDesignCircularProgressBar}"
-                            Value="0"
-                            IsIndeterminate="True"
-                            Width="50"
-                            Height="50"/>
-                <TextBlock Text="Loading..." 
-                          Foreground="White"
-                          FontSize="16"
-                          Margin="0,16,0,0"
-                          HorizontalAlignment="Center"/>
+                             Value="0"
+                             IsIndeterminate="True"
+                             Width="44"
+                             Height="44"/>
+                <TextBlock Text="Loading sessions…"
+                           Foreground="{StaticResource Gw.Brush.TextMuted}"
+                           FontSize="14"
+                           Margin="0,14,0,0"
+                           HorizontalAlignment="Center"/>
             </StackPanel>
         </Grid>
     </Grid>
