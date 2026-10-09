@@ -107,7 +107,7 @@
                             VerticalAlignment="Center">
 
                     <!-- Session control -->
-                    <Button Style="{StaticResource Gw.Button.Success}"
+                    <Button Style="{StaticResource Gw.Button}"
                             Command="{Binding StartCommand}"
                             Margin="0,0,8,0">
                         <StackPanel Orientation="Horizontal">
@@ -116,7 +116,7 @@
                         </StackPanel>
                     </Button>
 
-                    <Button Style="{StaticResource Gw.Button.Danger}"
+                    <Button Style="{StaticResource Gw.Button}"
                             Command="{Binding StopCommand}"
                             Margin="0,0,8,0">
                         <StackPanel Orientation="Horizontal">
@@ -125,7 +125,7 @@
                         </StackPanel>
                     </Button>
 
-                    <Button Style="{StaticResource Gw.Button.Warning}"
+                    <Button Style="{StaticResource Gw.Button}"
                             Command="{Binding RestartCommand}"
                             Margin="0,0,16,0">
                         <StackPanel Orientation="Horizontal">
@@ -145,8 +145,7 @@
                         </StackPanel>
                     </Button>
 
-                    <Button Style="{StaticResource Gw.Button}"
-                            Foreground="{StaticResource Gw.Brush.Red}"
+                    <Button Style="{StaticResource Gw.Button.Destructive}"
                             Command="{Binding DeleteCommand}"
                             Visibility="{Binding IsEditMode, Converter={StaticResource InverseBoolToVis}}">
                         <StackPanel Orientation="Horizontal">

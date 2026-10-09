@@ -101,7 +101,7 @@
             <!-- Retry Failed Button -->
             <Button Grid.Column="3"
                     Command="{Binding RetryFailedCommand}"
-                    Style="{StaticResource Gw.Button.Warning}"
+                    Style="{StaticResource Gw.Button}"
                     ToolTip="Retry all failed ACKs">
                 <StackPanel Orientation="Horizontal">
                     <materialDesign:PackIcon Kind="Replay" Width="16" Height="16" VerticalAlignment="Center"/>
@@ -252,7 +252,7 @@
                             Orientation="Horizontal"
                             VerticalAlignment="Bottom">
                     <Button Command="{Binding SendNowCommand}"
-                            Style="{StaticResource Gw.Button.Success}"
+                            Style="{StaticResource Gw.Button}"
                             Margin="0,0,8,0">
                         <StackPanel Orientation="Horizontal">
                             <materialDesign:PackIcon Kind="CheckBold" Width="16" Height="16" VerticalAlignment="Center"/>

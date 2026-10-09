@@ -234,7 +234,8 @@
     </Style>
 
     <!-- ──────────── Buttons ──────────── -->
-    <!-- Base: outlined, rounded. Variants below only change colours. -->
+    <!-- Base: outlined, rounded, neutral. Colour is kept for status, not for buttons:
+         only Primary (Save) is filled, Destructive turns red on hover. -->
     <Style x:Key="Gw.Button" TargetType="Button">
         <Setter Property="Foreground" Value="{StaticResource Gw.Brush.Text}"/>
         <Setter Property="Background" Value="Transparent"/>
@@ -286,22 +287,14 @@
         <Setter Property="Foreground" Value="White"/>
     </Style>
 
-    <Style x:Key="Gw.Button.Success" TargetType="Button" BasedOn="{StaticResource Gw.Button}">
-        <Setter Property="Background" Value="{StaticResource Gw.Brush.GreenSoft}"/>
-        <Setter Property="BorderBrush" Value="{StaticResource Gw.Brush.GreenLine}"/>
-        <Setter Property="Foreground" Value="{StaticResource Gw.Brush.Green}"/>
-    </Style>
-
-    <Style x:Key="Gw.Button.Danger" TargetType="Button" BasedOn="{StaticResource Gw.Button}">
-        <Setter Property="Background" Value="{StaticResource Gw.Brush.RedSoft}"/>
-        <Setter Property="BorderBrush" Value="{StaticResource Gw.Brush.RedLine}"/>
-        <Setter Property="Foreground" Value="{StaticResource Gw.Brush.Red}"/>
-    </Style>
-
-    <Style x:Key="Gw.Button.Warning" TargetType="Button" BasedOn="{StaticResource Gw.Button}">
-        <Setter Property="Background" Value="{StaticResource Gw.Brush.AmberSoft}"/>
-        <Setter Property="BorderBrush" Value="{StaticResource Gw.Brush.AmberLine}"/>
-        <Setter Property="Foreground" Value="{StaticResource Gw.Brush.Amber}"/>
+    <!-- Neutral like Gw.Button; turns red only on hover (Delete) -->
+    <Style x:Key="Gw.Button.Destructive" TargetType="Button" BasedOn="{StaticResource Gw.Button}">
+        <Style.Triggers>
+            <Trigger Property="IsMouseOver" Value="True">
+                <Setter Property="Foreground" Value="{StaticResource Gw.Brush.Red}"/>
+                <Setter Property="BorderBrush" Value="{StaticResource Gw.Brush.RedLine}"/>
+            </Trigger>
+        </Style.Triggers>
     </Style>
 
     <!-- Square button with only an icon -->
