@@ -43,10 +43,12 @@
 
             <ComboBox Grid.Column="2"
                       ItemsSource="{Binding MsgTypeOptions}"
-                      SelectedItem="{Binding SelectedMsgType}"
+                      SelectedValuePath="Code"
+                      DisplayMemberPath="Display"
+                      SelectedValue="{Binding SelectedMsgType}"
                       materialDesign:HintAssist.Hint="Type"
                       Style="{StaticResource MaterialDesignOutlinedComboBox}"
-                      Width="100"
+                      Width="240"
                       Margin="0,0,8,0"/>
 
             <Button Grid.Column="3"

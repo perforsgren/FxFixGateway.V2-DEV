@@ -5,8 +5,15 @@ using FxFixGateway.Domain.Interfaces;
 using FxFixGateway.Infrastructure.Logging;
 using FxFixGateway.Infrastructure.Notifications;                          // PushoverNotificationService
 using FxFixGateway.Infrastructure.Persistence;
+using FxFixGateway.Infrastructure.PostMarker;
 using FxFixGateway.Infrastructure.QuickFix;
 using FxFixGateway.UI.ViewModels;
+using FxSharedConfig;
+using FxTradeHub.Data.MySql.Repositories;
+using FxTradeHub.Domain.Parsing;
+using FxTradeHub.Domain.Services;
+using FxTradeHub.Services.Ingest;
+using FxTradeHub.Services.Parsing;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -16,12 +23,6 @@ using System;
 using System.IO;
 using System.Threading.Tasks;
 using System.Windows;
-using FxTradeHub.Domain.Services;
-using FxTradeHub.Domain.Parsing;
-using FxTradeHub.Services.Ingest;
-using FxTradeHub.Services.Parsing;
-using FxTradeHub.Data.MySql.Repositories;
-using FxSharedConfig;
 
 namespace FxFixGateway.UI
 {
@@ -313,7 +314,38 @@ namespace FxFixGateway.UI
             services.AddHostedService(sp => sp.GetRequiredService<GatewayHeartbeatService>());
             services.AddSingleton<ISessionHeartbeatNotifier>(sp =>
                 sp.GetRequiredService<GatewayHeartbeatService>());
-    
+
+
+            // PostMarker (FXO Hub): receives deals and sends Accept — replaces PostMarkerStudio.
+            // Has its own orchestrator with only the FXOhub parser, so the FIX sessions'
+            // orchestrator above is untouched. Account from fx_appsettings.json (AppConfigPath).
+            services.AddSingleton(sp => PostMarkerSettings.Load(
+                configuration,
+                System.Configuration.ConfigurationManager.AppSettings["AppConfigPath"]));
+
+            services.AddSingleton<PostMarkerSoapClient>();
+
+            services.AddHostedService(sp =>
+            {
+                var messageInRepo = new MessageInRepository(stpConnectionString);
+                var lookupRepo = new MySqlStpLookupRepository(stpConnectionString);
+
+                var postMarkerOrchestrator = new MessageInParserOrchestrator(
+                    messageInRepo,
+                    new MySqlStpRepository(stpConnectionString),
+                    new List<IInboundMessageParser> { new FXOhubXmlFileParser(lookupRepo) });
+
+                return new PostMarkerIngestService(
+                    sp.GetRequiredService<PostMarkerSettings>(),
+                    sp.GetRequiredService<PostMarkerSoapClient>(),
+                    new MessageInService(messageInRepo),
+                    messageInRepo,
+                    postMarkerOrchestrator,
+                    new MySqlStpRepositoryAsync(stpConnectionString),
+                    sp.GetRequiredService<ISessionHeartbeatNotifier>(),
+                    sp.GetRequiredService<ILogger<PostMarkerIngestService>>());
+            });
+
             // ViewModels
             services.AddTransient<SessionListViewModel>();
             services.AddTransient<MainViewModel>();

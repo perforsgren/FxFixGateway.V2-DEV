@@ -14,6 +14,34 @@ namespace FxFixGateway.UI.ViewModels
 {
     public partial class MessageLogViewModel : ObservableObject, IDisposable
     {
+        // Every message type the gateway sends or receives, plus the session events that
+        // MessageLogRepository logs — in the order the Type filter lists them.
+        private static readonly (string Code, string Name)[] KnownMessageTypes =
+        {
+            ("AE", "TradeCaptureReport"),
+            ("AR", "TradeCaptureReportAck"),
+            ("8", "ExecutionReport"),
+            ("j", "BusinessMessageReject"),
+            ("R", "QuoteRequest"),
+            ("V", "MarketDataRequest"),
+            ("W", "MarketDataSnapshot"),
+            ("X", "MarketDataIncrementalRefresh"),
+            ("Y", "MarketDataRequestReject"),
+            ("x", "SecurityListRequest"),
+            ("y", "SecurityList"),
+            ("A", "Logon"),
+            ("0", "Heartbeat"),
+            ("1", "TestRequest"),
+            ("2", "ResendRequest"),
+            ("3", "Reject"),
+            ("4", "SequenceReset"),
+            ("5", "Logout"),
+            ("CREATE", "Session Created"),
+            ("LOGON", "Logon Confirmed"),
+            ("LOGOUT", "Logout Received"),
+            ("?", "Unknown")
+        };
+
         private readonly IMessageLogger _messageLogger;
         private readonly IFixEngine? _fixEngine;
         private string? _currentSessionKey;
@@ -45,9 +73,13 @@ namespace FxFixGateway.UI.ViewModels
             "All", "Incoming", "Outgoing"
         };
 
-        public ObservableCollection<string> MsgTypeOptions { get; } = new()
+        /// <summary>
+        /// The Type filter: "All" plus every message type among the loaded messages (and the
+        /// selected one), kept in display order and extended as new types arrive live.
+        /// </summary>
+        public ObservableCollection<MsgTypeOption> MsgTypeOptions { get; } = new()
         {
-            "All", "AE", "AR", "0", "A", "5", "8"
+            MsgTypeOption.All
         };
 
         public MessageLogViewModel(IMessageLogger messageLogger, IFixEngine? fixEngine = null)
@@ -80,6 +112,7 @@ namespace FxFixGateway.UI.ViewModels
 
                 // Insert at top (newest first)
                 Messages.Insert(0, new MessageLogEntryViewModel(entry));
+                AddMsgTypeOption(e.MsgType);
                 OnPropertyChanged(nameof(FilteredMessages));
             });
         }
@@ -101,26 +134,20 @@ namespace FxFixGateway.UI.ViewModels
 
                 // Insert at top (newest first)
                 Messages.Insert(0, new MessageLogEntryViewModel(entry));
+                AddMsgTypeOption(e.MsgType);
                 OnPropertyChanged(nameof(FilteredMessages));
             });
         }
 
-        private string GetMessageSummary(string msgType)
+        private static string GetMessageSummary(string msgType)
         {
-            return msgType switch
+            foreach (var (code, name) in KnownMessageTypes)
             {
-                "0" => "Heartbeat",
-                "A" => "Logon",
-                "5" => "Logout",
-                "AE" => "TradeCaptureReport",
-                "AR" => "TradeCaptureReportAck",
-                "8" => "ExecutionReport",
-                "1" => "TestRequest",
-                "2" => "ResendRequest",
-                "3" => "Reject",
-                "4" => "SequenceReset",
-                _ => $"MsgType {msgType}"
-            };
+                if (code == msgType)
+                    return name;
+            }
+
+            return $"MsgType {msgType}";
         }
 
         public async Task LoadMessagesAsync(string sessionKey)
@@ -128,6 +155,7 @@ namespace FxFixGateway.UI.ViewModels
             if (string.IsNullOrEmpty(sessionKey))
             {
                 Messages.Clear();
+                RebuildMsgTypeOptions();
                 return;
             }
 
@@ -138,13 +166,14 @@ namespace FxFixGateway.UI.ViewModels
                 IsLoading = true;
 
                 var entries = await _messageLogger.GetRecentAsync(sessionKey, 500);
-                
+
                 Messages.Clear();
                 foreach (var entry in entries)
                 {
                     Messages.Add(new MessageLogEntryViewModel(entry));
                 }
-                
+
+                RebuildMsgTypeOptions();
                 OnPropertyChanged(nameof(FilteredMessages));
             }
             catch (Exception ex)
@@ -192,7 +221,68 @@ namespace FxFixGateway.UI.ViewModels
         {
             Messages.Clear();
             RawMessageText = string.Empty;
+            RebuildMsgTypeOptions();
             OnPropertyChanged(nameof(FilteredMessages));
+        }
+
+        // ────────────────────────────────────
+        // Type filter
+        // ────────────────────────────────────
+
+        /// <summary>
+        /// Rebuilds the Type filter from the loaded messages. The selected type stays selected —
+        /// and listed — even when no message of that type is loaded, e.g. right after Clear.
+        /// </summary>
+        private void RebuildMsgTypeOptions()
+        {
+            var selected = string.IsNullOrEmpty(SelectedMsgType) ? "All" : SelectedMsgType;
+
+            while (MsgTypeOptions.Count > 1)
+                MsgTypeOptions.RemoveAt(MsgTypeOptions.Count - 1);
+
+            foreach (var msgType in Messages.Select(m => m.MsgType).Distinct())
+                AddMsgTypeOption(msgType);
+
+            if (selected != "All")
+                AddMsgTypeOption(selected);
+
+            // Removing the selected item makes the ComboBox clear the selection; restore it.
+            SelectedMsgType = selected;
+        }
+
+        /// <summary>Adds a message type to the Type filter, in display order, unless it is already listed.</summary>
+        private void AddMsgTypeOption(string msgType)
+        {
+            if (string.IsNullOrEmpty(msgType) || MsgTypeOptions.Any(o => o.Code == msgType))
+                return;
+
+            var index = 1; // after "All"
+            while (index < MsgTypeOptions.Count && IsListedBefore(MsgTypeOptions[index].Code, msgType))
+                index++;
+
+            MsgTypeOptions.Insert(index, new MsgTypeOption(msgType, $"{msgType} · {GetMessageSummary(msgType)}"));
+        }
+
+        /// <summary>Known types in KnownMessageTypes order first, then any other type alphabetically.</summary>
+        private static bool IsListedBefore(string listed, string msgType)
+        {
+            var listedRank = GetDisplayRank(listed);
+            var newRank = GetDisplayRank(msgType);
+
+            return listedRank != newRank
+                ? listedRank < newRank
+                : string.CompareOrdinal(listed, msgType) < 0;
+        }
+
+        private static int GetDisplayRank(string msgType)
+        {
+            for (var i = 0; i < KnownMessageTypes.Length; i++)
+            {
+                if (KnownMessageTypes[i].Code == msgType)
+                    return i;
+            }
+
+            return KnownMessageTypes.Length;
         }
 
         public ObservableCollection<MessageLogEntryViewModel> FilteredMessages
@@ -203,13 +293,14 @@ namespace FxFixGateway.UI.ViewModels
 
                 if (SelectedDirection != "All")
                 {
-                    var direction = SelectedDirection == "Incoming" 
-                        ? MessageDirection.Incoming 
+                    var direction = SelectedDirection == "Incoming"
+                        ? MessageDirection.Incoming
                         : MessageDirection.Outgoing;
                     filtered = filtered.Where(m => m.Direction == direction);
                 }
 
-                if (SelectedMsgType != "All")
+                // Null while the Type filter is being rebuilt (the ComboBox clears its selection).
+                if (!string.IsNullOrEmpty(SelectedMsgType) && SelectedMsgType != "All")
                 {
                     filtered = filtered.Where(m => m.MsgType == SelectedMsgType);
                 }
@@ -217,7 +308,7 @@ namespace FxFixGateway.UI.ViewModels
                 if (!string.IsNullOrWhiteSpace(FilterText))
                 {
                     var search = FilterText.ToLowerInvariant();
-                    filtered = filtered.Where(m => 
+                    filtered = filtered.Where(m =>
                         m.Summary.ToLowerInvariant().Contains(search) ||
                         m.MsgType.ToLowerInvariant().Contains(search) ||
                         m.RawText.ToLowerInvariant().Contains(search));
@@ -242,6 +333,24 @@ namespace FxFixGateway.UI.ViewModels
         }
     }
 
+    /// <summary>One entry in the Type filter: the FIX MsgType code and "code · name" for display.</summary>
+    public sealed class MsgTypeOption
+    {
+        public static readonly MsgTypeOption All = new("All", "All");
+
+        public MsgTypeOption(string code, string display)
+        {
+            Code = code;
+            Display = display;
+        }
+
+        /// <summary>MsgType as stored on the message, e.g. "AE" — what the filter compares.</summary>
+        public string Code { get; }
+
+        /// <summary>Shown in the drop-down, e.g. "AE · TradeCaptureReport".</summary>
+        public string Display { get; }
+    }
+
     public partial class MessageLogEntryViewModel : ObservableObject
     {
         private readonly MessageLogEntry _entry;
@@ -259,7 +368,7 @@ namespace FxFixGateway.UI.ViewModels
         public string Summary => _entry.Summary;
         public string RawText => _entry.RawText;
 
-        public string DirectionColor => _entry.Direction == MessageDirection.Incoming 
+        public string DirectionColor => _entry.Direction == MessageDirection.Incoming
             ? "#E3F2FD"
             : "#E8F5E9";
     }
