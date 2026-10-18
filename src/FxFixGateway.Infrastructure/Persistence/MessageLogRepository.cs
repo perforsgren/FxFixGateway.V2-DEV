@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Data;
+using System.Threading;
 using System.Threading.Tasks;
 using FxFixGateway.Domain.Enums;
 using FxFixGateway.Domain.Interfaces;
@@ -9,7 +10,7 @@ using MySql.Data.MySqlClient;
 
 namespace FxFixGateway.Infrastructure.Persistence
 {
-    public sealed class MessageLogRepository : IMessageLogger
+    public sealed class MessageLogRepository : IMessageLogger, IMessageLogRetention
     {
         private readonly string _connectionString;
 
@@ -90,6 +91,53 @@ namespace FxFixGateway.Infrastructure.Persistence
             }
 
             return result;
+        }
+
+        public async Task<long?> GetKeepFromIdAsync(DateTime cutoffUtc, CancellationToken ct)
+        {
+            // The primary key from the oldest row, stopping at the first row inside the retention: it reads only the rows to
+            // delete (the first time about 2.3 million, hence the longer timeout; then a day's worth).
+            const string firstKept = @"
+                SELECT Id
+                FROM MessageIn FORCE INDEX (PRIMARY)
+                WHERE ReceivedUtc >= @Cutoff
+                ORDER BY Id
+                LIMIT 1;";
+            const string maxId = "SELECT MAX(Id) FROM MessageIn;";
+
+            await using var connection = new MySqlConnection(_connectionString);
+            await connection.OpenAsync(ct);
+
+            await using (var command = new MySqlCommand(firstKept, connection) { CommandTimeout = 600 })
+            {
+                command.Parameters.AddWithValue("@Cutoff", cutoffUtc);
+                var first = await command.ExecuteScalarAsync(ct);
+                if (first != null && first != DBNull.Value)
+                    return Convert.ToInt64(first);
+            }
+
+            await using (var command = new MySqlCommand(maxId, connection))
+            {
+                var max = await command.ExecuteScalarAsync(ct);
+                return max == null || max == DBNull.Value ? null : Convert.ToInt64(max) + 1;
+            }
+        }
+
+        public async Task<int> DeleteBelowAsync(long keepFromId, int batchSize, CancellationToken ct)
+        {
+            const string sql = @"
+                DELETE FROM MessageIn
+                WHERE Id < @KeepFrom
+                ORDER BY Id
+                LIMIT @Batch;";
+
+            await using var connection = new MySqlConnection(_connectionString);
+            await connection.OpenAsync(ct);
+
+            await using var command = new MySqlCommand(sql, connection);
+            command.Parameters.AddWithValue("@KeepFrom", keepFromId);
+            command.Parameters.AddWithValue("@Batch", batchSize);
+            return await command.ExecuteNonQueryAsync(ct);
         }
 
         /// <summary>One row in MessageIn. A database error is thrown: the caller (MessageProcessingService) counts and logs it.</summary>

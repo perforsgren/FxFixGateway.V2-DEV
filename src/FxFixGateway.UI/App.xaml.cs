@@ -185,8 +185,9 @@ namespace FxFixGateway.UI
             services.AddSingleton<ISessionRepository>(sp =>
                 new SessionRepository(connectionString));
 
-            services.AddSingleton<IMessageLogger>(sp =>
-                new MessageLogRepository(connectionString));
+            services.AddSingleton(sp => new MessageLogRepository(connectionString));
+            services.AddSingleton<IMessageLogger>(sp => sp.GetRequiredService<MessageLogRepository>());
+            services.AddSingleton<IMessageLogRetention>(sp => sp.GetRequiredService<MessageLogRepository>());
 
             services.AddSingleton<IAckQueueRepository>(sp =>
                 new AckQueueRepository(stpConnectionString));
@@ -313,6 +314,12 @@ namespace FxFixGateway.UI
 
             // Background Services
             services.AddHostedService<AckPollingService>();
+
+            // MessageIn log: rows older than MessageLog:RetentionDays deleted once a day.
+            var messageLogRetentionDays = configuration.GetValue("MessageLog:RetentionDays", 14);
+            services.AddHostedService(sp => new MessageLogCleanupService(
+                sp.GetRequiredService<IMessageLogRetention>(), messageLogRetentionDays,
+                sp.GetRequiredService<ILogger<MessageLogCleanupService>>()));
 
             // Gateway heartbeat — skriver till fxvol.gateway_heartbeat var 2:e sekund
             services.AddSingleton<IGatewayHeartbeatRepository>(sp =>
