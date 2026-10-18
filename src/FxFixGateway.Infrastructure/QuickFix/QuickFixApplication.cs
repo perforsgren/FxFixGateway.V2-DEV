@@ -27,6 +27,7 @@ namespace FxFixGateway.Infrastructure.QuickFix
         private readonly IMarketDataService?           _marketDataService;
         private readonly IQuoteRequestService?         _quoteRequestService;
         private readonly IFxoRfqService?               _fxoRfqService;
+        private readonly IFxoQuoteService?             _fxoQuoteService;
         private readonly ISessionHeartbeatNotifier?    _heartbeatNotifier;
         private readonly IPushNotificationService?     _pushNotification;
 
@@ -57,7 +58,8 @@ namespace FxFixGateway.Infrastructure.QuickFix
             IQuoteRequestService? quoteRequestService      = null,
             ISessionHeartbeatNotifier? heartbeatNotifier   = null,
             IPushNotificationService? pushNotification      = null,
-            IFxoRfqService? fxoRfqService                  = null)
+            IFxoRfqService? fxoRfqService                  = null,
+            IFxoQuoteService? fxoQuoteService              = null)
         {
             _sessionKeyMap      = sessionKeyMap ?? throw new ArgumentNullException(nameof(sessionKeyMap));
             _sessionCredentials = sessionCredentials ?? new Dictionary<string, (string, string)>();
@@ -74,6 +76,7 @@ namespace FxFixGateway.Infrastructure.QuickFix
             _heartbeatNotifier   = heartbeatNotifier;
             _pushNotification    = pushNotification;
             _fxoRfqService       = fxoRfqService;
+            _fxoQuoteService     = fxoQuoteService;
         }
 
         /// <summary>
@@ -373,6 +376,24 @@ namespace FxFixGateway.Infrastructure.QuickFix
                     });
                     break;
 
+                // Quote Status Report: FXOhub's answer to our Quote or Quote Cancel.
+                case "AI":
+                    HandleFxoQuote(sessionKey, msgType, () =>
+                    {
+                        var dto = FxoQuoteMessages.ParseQuoteStatusReport(message, rawMessage);
+                        return () => _fxoQuoteService!.HandleQuoteStatusReportAsync(sessionKey, dto);
+                    });
+                    break;
+
+                // Business Message Reject of our Quote / Quote Cancel.
+                case "j" when FxoQuoteMessages.IsQuoteReject(message):
+                    HandleFxoQuote(sessionKey, msgType, () =>
+                    {
+                        var dto = FxoQuoteMessages.ParseBusinessReject(message, rawMessage);
+                        return () => _fxoQuoteService!.HandleBusinessRejectAsync(sessionKey, dto);
+                    });
+                    break;
+
                 case "R":
                     if (_quoteRequestService != null)
                     {
@@ -426,6 +447,45 @@ namespace FxFixGateway.Infrastructure.QuickFix
                 {
                     ErrorOccurred?.Invoke(this, new ErrorOccurredEvent(
                         sessionKey, $"FXOhub RFQ message 35={msgType} could not be handled: {ex.Message}", ex));
+                }
+            });
+        }
+
+        /// <summary>
+        /// As <see cref="HandleFxoRfq"/>, for the answers to our quotes: parsed here, handled on a background task, a message
+        /// that cannot be parsed or handled reported.
+        /// </summary>
+        private void HandleFxoQuote(string sessionKey, string msgType, Func<Func<Task>> parse)
+        {
+            if (_fxoQuoteService == null)
+            {
+                ErrorOccurred?.Invoke(this, new ErrorOccurredEvent(
+                    sessionKey, $"FXOhub quote message 35={msgType} received but no FXOhub quote service is configured — not applied"));
+                return;
+            }
+
+            Func<Task> handle;
+            try
+            {
+                handle = parse();
+            }
+            catch (Exception ex)
+            {
+                ErrorOccurred?.Invoke(this, new ErrorOccurredEvent(
+                    sessionKey, $"FXOhub quote message 35={msgType} could not be parsed: {ex.Message}", ex));
+                return;
+            }
+
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    await handle();
+                }
+                catch (Exception ex)
+                {
+                    ErrorOccurred?.Invoke(this, new ErrorOccurredEvent(
+                        sessionKey, $"FXOhub quote message 35={msgType} could not be handled: {ex.Message}", ex));
                 }
             });
         }

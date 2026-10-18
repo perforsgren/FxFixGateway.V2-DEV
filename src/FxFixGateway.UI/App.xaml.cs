@@ -278,6 +278,7 @@ namespace FxFixGateway.UI
                 var heartbeatNotifier = sp.GetRequiredService<ISessionHeartbeatNotifier>();
                 var pushNotification = sp.GetRequiredService<IPushNotificationService>(); // ← lägg till
                 var fxoRfqService = sp.GetRequiredService<IFxoRfqService>();
+                var fxoQuoteService = sp.GetRequiredService<IFxoQuoteService>();
 
                 return new QuickFixEngine(
                     logger,
@@ -291,7 +292,8 @@ namespace FxFixGateway.UI
                     quoteRequestSvc,
                     heartbeatNotifier,
                     pushNotification, // ← lägg till
-                    fxoRfqService);
+                    fxoRfqService,
+                    fxoQuoteService);
             });
 
             // Application Services
@@ -396,6 +398,20 @@ namespace FxFixGateway.UI
                 new FxoRfqService(
                     sp.GetRequiredService<IFxoRfqRepository>(),
                     sp.GetRequiredService<ILogger<FxoRfqService>>()));
+
+            // FXOhub quoting (step 4): the pricer's prices (fxohub_rfq_price) as Quote / Quote Cancel, and the answers.
+            // The sender finds the session through the engine when it sends (not at construction: the engine depends on this service).
+            services.AddSingleton<IFxoQuoteRepository>(sp => new FxoQuoteRepository(fxvolConnectionString));
+            services.AddSingleton<IFxoQuoteSender>(sp =>
+                new FxoQuoteSender(key => (sp.GetRequiredService<IFixEngine>() as QuickFixEngine)?.GetSessionId(key)));
+            services.AddSingleton<FxoQuoteService>(sp =>
+                new FxoQuoteService(
+                    sp.GetRequiredService<IFxoQuoteRepository>(),
+                    sp.GetRequiredService<IFxoRfqRepository>(),
+                    sp.GetRequiredService<IFxoQuoteSender>(),
+                    sp.GetRequiredService<ILogger<FxoQuoteService>>()));
+            services.AddSingleton<IFxoQuoteService>(sp => sp.GetRequiredService<FxoQuoteService>());
+            services.AddHostedService(sp => sp.GetRequiredService<FxoQuoteService>());
 
             services.AddSingleton<IPushNotificationService, PushoverNotificationService>();
             services.AddHostedService<FixEngineHostedService>();

@@ -27,6 +27,7 @@ namespace FxFixGateway.Infrastructure.QuickFix
         private readonly ISessionHeartbeatNotifier?      _heartbeatNotifier;
         private readonly IPushNotificationService?         _pushNotification;
         private readonly IFxoRfqService?                 _fxoRfqService;
+        private readonly IFxoQuoteService?               _fxoQuoteService;
 
         private readonly Dictionary<string, SSLTunnelProxy> _sslTunnels = new();
 
@@ -58,7 +59,8 @@ namespace FxFixGateway.Infrastructure.QuickFix
             IQuoteRequestService? quoteRequestService          = null,
             ISessionHeartbeatNotifier? heartbeatNotifier       = null,
             IPushNotificationService? pushNotification         = null,
-            IFxoRfqService? fxoRfqService                      = null)
+            IFxoRfqService? fxoRfqService                      = null,
+            IFxoQuoteService? fxoQuoteService                  = null)
         {
             _logger              = logger;
             _dataDictionaryPath  = dataDictionaryPath ?? GetDefaultDataDictionaryPath();
@@ -72,7 +74,12 @@ namespace FxFixGateway.Infrastructure.QuickFix
             _heartbeatNotifier   = heartbeatNotifier;
             _pushNotification    = pushNotification;
             _fxoRfqService       = fxoRfqService;
+            _fxoQuoteService     = fxoQuoteService;
         }
+
+        /// <summary>The QuickFIX session for <paramref name="sessionKey"/>, or null before initialisation or for an unknown key.</summary>
+        public QF.SessionID? GetSessionId(string sessionKey)
+            => _sessionIdMap != null && _sessionIdMap.TryGetValue(sessionKey, out var id) ? id : null;
 
         public async Task InitializeAsync(IEnumerable<SessionConfiguration> sessions)
         {
@@ -221,7 +228,8 @@ namespace FxFixGateway.Infrastructure.QuickFix
                 _quoteRequestService,
                 _heartbeatNotifier,
                 _pushNotification,       // OnLogout's disconnect notice (was not passed before)
-                _fxoRfqService);
+                _fxoRfqService,
+                _fxoQuoteService);
             _application.StatusChanged += OnStatusChanged;
             _application.MessageReceived += OnMessageReceived;
             _application.MessageSent += OnMessageSent;

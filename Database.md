@@ -20,6 +20,8 @@
 | `fxohub_rfq_quote` | Aktuellt djup per FXOhub-RFQ (35=W i RFQ-sessionen), en rad per pris |
 | `fxohub_rfq_quote_entry` | Benpriser per pris i djupet |
 | `fxohub_rfq_event` | Varje FXOhub-RFQ-meddelande som händelse (revision, hit ratio) |
+| `fxohub_rfq_price` | Våra priser på FXOhub-RFQ:er, en rad per version (skrivs av pricern, skickas av gatewayen) |
+| `fxohub_rfq_price_leg` | Benen i en prisversion (vol bid/offer, strike, delta) |
 
 Referenstabell: `vol_tenor_def` — tillåtna tenorkoder (OD, ON, 1M, 3M, 6M, 1Y …)
 
@@ -244,7 +246,9 @@ Incoming RFQ-blotter. Egna tabeller enligt noteringen ovan: FXOhub har inget `se
 | `fxohub_rfq_leg` | `rfq_id` → `fxohub_rfq.id` | Ett ben per rad: LegID (7940), mängd i miljoner (687), expiry (611), strike (612) eller delta (9075), LegSide (624), löptid (6215, kod och namn), call/put (6713), cut (9125), leverans (743), ATMType (6005), valutor (556, 9074, 9034, 120) |
 | `fxohub_rfq_quote` | `(session_key, quote_req_id)` | Aktuellt djup: ett pris per rad i ordning bäst → sämst, strategins vol bid/offer (6001/6002), OwnQuote (5331), OwnQuoteRequestor (6012). Ersätts helt av varje djup-meddelande |
 | `fxohub_rfq_quote_entry` | `quote_row_id` → `fxohub_rfq_quote.id` | Benpriser (vol) per pris: typ (269), LegID, pris (270), storlek, MDPxRelatedTo (10502) |
-| `fxohub_rfq_event` | — | En rad per meddelande: typ (`INCOMING`, `CANCELLED`, `CANCELLED_UNKNOWN`, `DEPTH`, `DEPTH_EXECUTION`, `INVALID`), detalj och rått meddelande |
+| `fxohub_rfq_event` | — | En rad per meddelande: typ (`INCOMING`, `CANCELLED`, `CANCELLED_UNKNOWN`, `DEPTH`, `DEPTH_EXECUTION`, `INVALID`, `QUOTE_SENT`, `QUOTE_CANCEL_SENT`, `QUOTE_STATUS`, `BUSINESS_REJECT`), detalj och rått meddelande |
+| `fxohub_rfq_price` | `(rfq_id, version)` unik; `rfq_id` → `fxohub_rfq.id` | Skript `20261018_fxohub_rfq_price.sql`. En prisversion: status (`QUEUED` → `SENDING` → `SENT` → `ACCEPTED`; `REJECTED`, `WITHDRAW` → `WITHDRAWN`, `REPLACED`, `EXPIRED`, `DONE`), trader (TraderID 9536), tidsstipulation (`valid_seconds`, `valid_until_utc` = ValidUntilTime 62), spotstipulation (`spot_ref` = LegSpotRate 5235, `spot_pips`, intervallet), delta hedge, vol-pris och premie som pricern visade dem, QuoteID (117), skickad / kvitterad / Quote Cancel skickad, orsak. Skriptet lägger också `traded_*`, `drop_copy_utc` och `stp_message_in_id` på `fxohub_rfq` |
+| `fxohub_rfq_price_leg` | `(price_id, leg_no)` | Benets vol bid/offer (5678/9159), strike (6354), delta (9075) |
 
 ### Dataflöde (FXOhub RFQ-session)
 
@@ -260,6 +264,25 @@ Incoming RFQ-blotter. Egna tabeller enligt noteringen ovan: FXOhub har inget `se
 35=W med 131 (RFQ-djup, inte orderbok)
 → fxohub_rfq_quote + fxohub_rfq_quote_entry (ersätts; tomt vid "No Market Data", 6003=1)
 → fxohub_rfq.has_market / last_traded_price / depth_updated_utc
+
+### Våra priser (FxoQuoteService, var 500 ms)
+
+Pricern skriver en version (`QUEUED`) för en fråga dess trader har tagit (villkorat: bara `PICKED_UP` av traden).
+→ tidsstipulationen passerad: `EXPIRED`; frågan inte längre traderns: `REJECTED`
+→ sessionen inloggad: `QUEUED` → `SENDING` (villkorad UPDATE) → Quote 35=S (benen som grupp 555 i specens ordning,
+  QuoteID `OS{id}-{version}`) → `SENT` + fxohub_rfq_event QUOTE_SENT; inte inloggad: ligger kvar `QUEUED`
+→ pricern ber om `WITHDRAW` (ej skickad: `WITHDRAWN` direkt) → Quote Cancel 35=Z (298=1, 10127=2 när spot lämnat
+  intervallet) → `cancel_sent_utc`
+
+35=AI (Quote Status Report, på QuoteID)
+→ 0: `ACCEPTED` (+ `ack_utc`; äldre levande versioner av frågan `REPLACED`), 3: `WITHDRAWN`, 5/9: `REJECTED`,
+  7: `EXPIRED`, 10: ingen ändring → fxohub_rfq_event QUOTE_STATUS
+
+35=j med 372 = S/Z (Business Message Reject) → versionen med QuoteID 379 `REJECTED` → BUSINESS_REJECT
+
+Spotstipulationen finns inte i FIX-meddelandet: pricern drar priset när live spot lämnar intervallet. Avslut
+(`traded_*` på `fxohub_rfq`) och kopplingen till mäklarens drop copy (`stp_message_in_id`) skrivs inte än: väntar på
+FXOhubs svar om hur en match syns och vilket id som kopplar fråga, pris och trade capture.
 → fxohub_rfq_event (DEPTH, eller DEPTH_EXECUTION när MDSource 5177 = 0)
 
 RFQ-sessionen måste använda `FIX44_FXOhub.xml` som data dictionary, så att grupperna (146/555/453 och 296/268) tolkas.
