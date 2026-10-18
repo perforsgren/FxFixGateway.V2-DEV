@@ -1,4 +1,5 @@
 using FxFixGateway.Domain.Interfaces;
+using FxFixGateway.Domain.ValueObjects;
 using Microsoft.Extensions.Logging;
 
 namespace FxFixGateway.Application.Services
@@ -28,6 +29,11 @@ namespace FxFixGateway.Application.Services
             "VOLB_FIXHUB_PROD"
         };
 
+        // The instruments requested (35=V) since each session's logon: one listed again (a second security list, or twice in
+        // one) is not requested or marked again.
+        private readonly Dictionary<string, HashSet<string>> _requested = new(StringComparer.OrdinalIgnoreCase);
+        private readonly object _requestedLock = new();
+
         public MarketDataOrchestrator(
             IMarketDataSubscriber subscriber,
             IMarketInstrumentRepository instrumentRepo,
@@ -46,7 +52,16 @@ namespace FxFixGateway.Application.Services
         {
             if (sessionKey == "FXOHUB_UAT")
             {
-                var subs = await _subscriptionRepo.GetEnabledSubscriptionsAsync(sessionKey);
+                IReadOnlyList<MarketSubscriptionFilter> subs;
+                try
+                {
+                    subs = await _subscriptionRepo.GetEnabledSubscriptionsAsync(sessionKey);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "[{Session}] fix_config_prod.market_subscriptions could not be read — no MarketDataRequest sent", sessionKey);
+                    return;
+                }
                 var pairs = subs
                     .Select(s => s.CurrencyPair)
                     .Distinct(StringComparer.OrdinalIgnoreCase)
@@ -70,21 +85,38 @@ namespace FxFixGateway.Application.Services
             if (!MarketDataSessions.Contains(sessionKey))
                 return;
 
+            lock (_requestedLock) _requested[sessionKey] = new HashSet<string>(StringComparer.Ordinal);
             _logger.LogInformation("[{Session}] Logon detected — sending SecurityListRequest (35=x)", sessionKey);
             _subscriber.SendSecurityListRequest(sessionKey);
         }
 
-        public async Task OnSecurityListReadyAsync(string sessionKey, IReadOnlyList<string> securityIds)
+        public async Task OnSecurityListReadyAsync(string sessionKey, IReadOnlyList<string> listedIds)
         {
-            if (securityIds.Count == 0)
+            if (listedIds.Count == 0)
             {
                 _logger.LogWarning("[{Session}] SecurityList ready but no matching instruments — skipping MarketDataRequest", sessionKey);
                 return;
             }
 
+            List<string> securityIds;
+            lock (_requestedLock)
+            {
+                if (!_requested.TryGetValue(sessionKey, out var requested))
+                    _requested[sessionKey] = requested = new HashSet<string>(StringComparer.Ordinal);
+                securityIds = listedIds.Where(requested.Add).ToList();
+            }
+            if (securityIds.Count == 0)
+            {
+                _logger.LogInformation(
+                    "[{Session}] SecurityList ready — all {Count} instrument(s) already requested since logon — no MarketDataRequest",
+                    sessionKey, listedIds.Count);
+                return;
+            }
+
             _logger.LogInformation(
-                "[{Session}] SecurityList ready — {Count} instrument(s) — sending MarketDataRequest (35=V)",
-                sessionKey, securityIds.Count);
+                "[{Session}] SecurityList ready — {Count} instrument(s) — sending MarketDataRequest (35=V){Skipped}",
+                sessionKey, securityIds.Count,
+                securityIds.Count < listedIds.Count ? $"; {listedIds.Count - securityIds.Count} already requested since logon" : "");
 
             try
             {

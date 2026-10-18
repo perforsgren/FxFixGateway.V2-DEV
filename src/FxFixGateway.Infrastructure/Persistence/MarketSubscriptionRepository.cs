@@ -31,33 +31,22 @@ namespace FxFixGateway.Infrastructure.Persistence
                   AND is_enabled  = TRUE
                 ORDER BY currency_pair, product;";
 
-            try
-            {
-                await using var connection = new MySqlConnection(_connectionString);
-                await connection.OpenAsync();
+            // No catch: a database error is thrown. Read as "no subscriptions" before, it skipped the security list with a
+            // misleading warning and the error went only to the Debug output.
+            await using var connection = new MySqlConnection(_connectionString);
+            await connection.OpenAsync();
 
-                await using var command = new MySqlCommand(sql, connection);
-                command.Parameters.AddWithValue("@SessionKey", sessionKey);
+            await using var command = new MySqlCommand(sql, connection);
+            command.Parameters.AddWithValue("@SessionKey", sessionKey);
 
-                await using var reader = await command.ExecuteReaderAsync(CommandBehavior.CloseConnection);
+            await using var reader = await command.ExecuteReaderAsync(CommandBehavior.CloseConnection);
 
-                while (await reader.ReadAsync())
-                {
-                    result.Add(new MarketSubscriptionFilter(
-                        sessionKey:   reader.GetString("session_key"),
-                        currencyPair: reader.GetString("currency_pair"),
-                        product:      reader.GetInt32("product")));
-                }
-            }
-            catch (MySqlException ex)
+            while (await reader.ReadAsync())
             {
-                System.Diagnostics.Debug.WriteLine(
-                    $"[MarketSubscriptionRepository] MySqlException {ex.Number}: {ex.Message}");
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine(
-                    $"[MarketSubscriptionRepository] Unexpected error: {ex.Message}");
+                result.Add(new MarketSubscriptionFilter(
+                    sessionKey:   reader.GetString("session_key"),
+                    currencyPair: reader.GetString("currency_pair"),
+                    product:      reader.GetInt32("product")));
             }
 
             return result;

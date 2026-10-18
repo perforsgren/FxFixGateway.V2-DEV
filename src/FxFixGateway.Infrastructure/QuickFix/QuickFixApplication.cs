@@ -325,7 +325,7 @@ namespace FxFixGateway.Infrastructure.QuickFix
                     {
                         var instruments = ParseSecurityInstrumentDtos(message);
                         if (instruments.Count > 0)
-                            _ = Task.Run(() => _securityListService.HandleSecurityListAsync(sessionKey, instruments));
+                            _securityListService.Enqueue(sessionKey, instruments);   // in arrival order; never waits
                         break;
                     }
 

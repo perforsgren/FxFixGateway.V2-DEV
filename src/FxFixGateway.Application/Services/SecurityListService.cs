@@ -1,3 +1,4 @@
+using System.Threading.Channels;
 using FxFixGateway.Domain.Entities;
 using FxFixGateway.Domain.Interfaces;
 using FxFixGateway.Domain.ValueObjects;
@@ -27,6 +28,12 @@ namespace FxFixGateway.Application.Services
         private readonly Dictionary<string, List<string>> _pendingSecurityIds = new();
         private readonly object _lock = new();
 
+        // The 35=y messages, handled one at a time in arrival order. Each was handled on its own thread-pool task before, so
+        // the last fragment could be handled before others (18 Oct: "complete — 1781", then "complete — 107").
+        private readonly Channel<(string SessionKey, IReadOnlyList<SecurityInstrumentDto> Instruments)> _queue =
+            Channel.CreateUnbounded<(string, IReadOnlyList<SecurityInstrumentDto>)>(new UnboundedChannelOptions { SingleReader = true });
+        private readonly Task _consumer;
+
         public SecurityListService(
             IMarketSubscriptionRepository subscriptionRepo,
             IMarketInstrumentRepository instrumentRepo,
@@ -37,9 +44,25 @@ namespace FxFixGateway.Application.Services
             _instrumentRepo = instrumentRepo ?? throw new ArgumentNullException(nameof(instrumentRepo));
             _orchestrator = orchestrator ?? throw new ArgumentNullException(nameof(orchestrator));
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+            _consumer = Task.Run(ConsumeAsync);
         }
 
-        public async Task HandleSecurityListAsync(string sessionKey, IReadOnlyList<SecurityInstrumentDto> instruments)
+        public void Enqueue(string sessionKey, IReadOnlyList<SecurityInstrumentDto> instruments)
+            => _queue.Writer.TryWrite((sessionKey, instruments));
+
+        private async Task ConsumeAsync()
+        {
+            await foreach (var (sessionKey, instruments) in _queue.Reader.ReadAllAsync())
+            {
+                try { await HandleSecurityListAsync(sessionKey, instruments); }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "[{Session}] SecurityList message with {Count} instrument(s) failed", sessionKey, instruments.Count);
+                }
+            }
+        }
+
+        private async Task HandleSecurityListAsync(string sessionKey, IReadOnlyList<SecurityInstrumentDto> instruments)
         {
             if (!MarketDataSessions.Contains(sessionKey))
                 return;
@@ -56,7 +79,18 @@ namespace FxFixGateway.Application.Services
                 return;
             }
 
-            var filters = await _subscriptionRepo.GetEnabledSubscriptionsAsync(sessionKey);
+            IReadOnlyList<MarketSubscriptionFilter> filters;
+            try
+            {
+                filters = await _subscriptionRepo.GetEnabledSubscriptionsAsync(sessionKey);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex,
+                    "[{Session}] fix_config_prod.market_subscriptions could not be read — this SecurityList message ({Count} instrument(s)) is not handled",
+                    sessionKey, instruments.Count);
+                return;
+            }
             if (filters.Count == 0)
             {
                 _logger.LogWarning("[{Session}] No enabled subscriptions — skipping SecurityList", sessionKey);
@@ -157,19 +191,21 @@ namespace FxFixGateway.Application.Services
 
             if (isComplete)
             {
-                List<string> allIds;
+                List<string> listed;
                 lock (_lock)
                 {
                     _pendingSecurityIds.TryGetValue(sessionKey, out var pending);
-                    allIds = pending?.ToList() ?? matchedIds;
+                    listed = pending?.ToList() ?? matchedIds;
                     _pendingSecurityIds.Remove(sessionKey);
                 }
+                // Each instrument once (18 Oct: Volbroker listed each of its 944 matching instruments twice).
+                var allIds = listed.Distinct(StringComparer.Ordinal).ToList();
 
                 if (allIds.Count > 0)
                 {
                     _logger.LogInformation(
-                        "[{Session}] SecurityList complete — {Count} matching instrument(s), notifying orchestrator",
-                        sessionKey, allIds.Count);
+                        "[{Session}] SecurityList complete — {Count} matching instrument(s) ({Listed} listed, {Twice} more than once), notifying orchestrator",
+                        sessionKey, allIds.Count, listed.Count, listed.Count - allIds.Count);
                     await _orchestrator.OnSecurityListReadyAsync(sessionKey, allIds);
                 }
                 else
