@@ -241,7 +241,10 @@ namespace FxFixGateway.UI
                 var tpicapRepo = sp.GetRequiredService<ITpicapInstrumentRepository>();
                 var canonicalRepo = sp.GetRequiredService<ICanonicalMarketBookRepository>();
                 var logger = sp.GetRequiredService<ILogger<MarketDataService>>();
-                return new MarketDataService(snapshotRepo, instrRepo, tpicapRepo, canonicalRepo, logger);
+                // Holds the burst of first snapshots after a subscription (about 10,000 messages on Volbroker on 18 Oct).
+                var capacity = configuration.GetValue("MarketData:ChannelCapacity", 20_000);
+                logger.LogInformation("Market data queue capacity: {Capacity} snapshots", capacity);
+                return new MarketDataService(snapshotRepo, instrRepo, tpicapRepo, canonicalRepo, logger, capacity);
             });
 
             // Market Data — orchestration

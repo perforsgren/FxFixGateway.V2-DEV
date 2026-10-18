@@ -13,9 +13,9 @@ namespace FxFixGateway.Application.Services
     /// Writes every FIX message (in and out, every session) to the MessageIn log table, off QuickFIX's session thread: the
     /// event handlers only queue the message (bounded; when full the oldest are dropped and counted), and one background
     /// task writes them, with the time the message was received or sent. Before, the write ran on the session thread, and
-    /// MySql.Data's async calls block: a write hitting the 30 s timeout held the session 30 s per message (16 Oct: one
-    /// Volbroker message handled a minute, requests up to 9 min late). Failed, slow or dropped writes are logged, at most
-    /// once a minute.
+    /// MySql.Data waits for a free pooled connection by blocking its thread: with the pool full, a write held the session
+    /// for the 30 s connection timeout per message (16 Oct: one Volbroker message handled a minute, requests up to 9 min
+    /// late). Failed, slow or dropped writes are logged, at most once a minute.
     /// </summary>
     public sealed class MessageProcessingService : IDisposable
     {

@@ -28,6 +28,19 @@ namespace FxFixGateway.Application.Services
 
         private readonly ConcurrentDictionary<(string SessionKey, string SecurityId), bool> _subscriptionCache = new();
 
+        // Subscription checks against the database: one at a time per instrument, and at most CheckConcurrency together.
+        // Right after Volbroker's subscription about 1,800 instruments send their first snapshots within seconds; one query
+        // per snapshot emptied the fxvol connection pool, and MySql.Data waits for a free pooled connection by blocking its
+        // thread, up to the 30 s connection timeout (18 Oct: checks failed after 30 s, snapshots not stored).
+        private const int CheckConcurrency = 4;
+        private readonly SemaphoreSlim _checkGate = new(CheckConcurrency, CheckConcurrency);
+        private readonly ConcurrentDictionary<(string SessionKey, string SecurityId), Lazy<Task<bool?>>> _checks = new();
+
+        // Snapshots dropped by the full queue (oldest first): the first drop is logged, and the count when it has caught up.
+        private readonly int _channelCapacity;
+        private long _droppedSnapshots;
+        private int _dropping;
+
         private static readonly HashSet<string> MarketDataSessions = new(StringComparer.OrdinalIgnoreCase)
         {
             //"VOLB_FIXHUB_DEV",
@@ -54,13 +67,15 @@ namespace FxFixGateway.Application.Services
             _canonicalRepo = canonicalRepo ?? throw new ArgumentNullException(nameof(canonicalRepo));
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
 
-            _channel = Channel.CreateBounded<(string, MarketDataSnapshotDto)>(
+            _channelCapacity = channelCapacity;
+            _channel = Channel.CreateBounded<(string SessionKey, MarketDataSnapshotDto Dto)>(
                 new BoundedChannelOptions(channelCapacity)
                 {
                     FullMode = BoundedChannelFullMode.DropOldest,
                     SingleReader = true,
                     SingleWriter = false
-                });
+                },
+                OnSnapshotDropped);
 
             _incrementalChannel = Channel.CreateBounded<(string, IReadOnlyList<TpicapIncrementalEntryDto>)>(
                 new BoundedChannelOptions(channelCapacity)
@@ -91,21 +106,11 @@ namespace FxFixGateway.Application.Services
                 var cacheKey = (sessionKey, dto.SecurityId);
                 if (!_subscriptionCache.TryGetValue(cacheKey, out var isSubscribed))
                 {
-                    try
-                    {
-                        isSubscribed = await _snapshotRepo.IsSubscribedAsync(sessionKey, dto.SecurityId);
-                    }
-                    catch (Exception ex)
-                    {
-                        // Unknown, not "no": nothing is cached and the next snapshot asks again. A 35=W is a full snapshot,
-                        // so the next one carries the whole book.
-                        _logger.LogWarning(ex,
-                            "[{Session}] 35=W SecurityId={SecId}: subscription check failed — snapshot not stored, checked again on the next one",
-                            sessionKey, dto.SecurityId);
-                        return;
-                    }
-                    // TryAdd: a MarkSubscribed (QuoteRequest) that came meanwhile wins over this answer.
-                    _subscriptionCache.TryAdd(cacheKey, isSubscribed);
+                    // Snapshots of an instrument that come while its check runs wait for that check (no thread is held).
+                    var answer = await _checks.GetOrAdd(cacheKey, key => new Lazy<Task<bool?>>(() => CheckSubscribedAsync(key))).Value;
+                    if (answer == null)
+                        return;                                   // the check failed (logged once): not stored, asked again next time
+                    isSubscribed = answer.Value;
                 }
 
                 if (!isSubscribed)
@@ -123,6 +128,50 @@ namespace FxFixGateway.Application.Services
                     "[{Session}] Market data channel full — dropping snapshot for SecurityId={SecId}",
                     sessionKey, dto.SecurityId);
             }
+        }
+
+        /// <summary>
+        /// Asks the database whether the instrument is subscribed, at most <see cref="CheckConcurrency"/> checks at a time.
+        /// The answer is cached before the check is removed from the in-flight list, so a later snapshot finds one or the
+        /// other. Null when the check failed: logged here once for all the snapshots that waited for it, nothing cached, and
+        /// the next snapshot asks again (a 35=W is a full snapshot, so the next one carries the whole book).
+        /// </summary>
+        private async Task<bool?> CheckSubscribedAsync((string SessionKey, string SecurityId) key)
+        {
+            try
+            {
+                await _checkGate.WaitAsync().ConfigureAwait(false);
+                try
+                {
+                    var isSubscribed = await _snapshotRepo.IsSubscribedAsync(key.SessionKey, key.SecurityId).ConfigureAwait(false);
+                    // GetOrAdd: a MarkSubscribed (QuoteRequest) that came meanwhile wins over this answer.
+                    return _subscriptionCache.GetOrAdd(key, isSubscribed);
+                }
+                finally
+                {
+                    _checkGate.Release();
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex,
+                    "[{Session}] 35=W SecurityId={SecId}: subscription check failed — snapshot not stored, checked again on the next one",
+                    key.SessionKey, key.SecurityId);
+                return null;
+            }
+            finally
+            {
+                _checks.TryRemove(key, out _);
+            }
+        }
+
+        private void OnSnapshotDropped((string SessionKey, MarketDataSnapshotDto Dto) item)
+        {
+            Interlocked.Increment(ref _droppedSnapshots);
+            if (Interlocked.Exchange(ref _dropping, 1) == 0)
+                _logger.LogWarning(
+                    "[{Session}] Market data queue full ({Capacity}): dropping the oldest snapshots (first SecurityId={SecId}); the count follows when it has caught up",
+                    item.SessionKey, _channelCapacity, item.Dto.SecurityId);
         }
 
         public void MarkSubscribed(string sessionKey, string securityId)
@@ -374,6 +423,12 @@ namespace FxFixGateway.Application.Services
                     _logger.LogError(ex, "[{Session}] Consumer failed for SecurityId={SecId}",
                         sessionKey, dto.SecurityId);
                 }
+
+                // Caught up after dropping: how many were lost (each a full snapshot; a later one of the same instrument
+                // carries its whole book, but trades only in a dropped one are not stored).
+                if (_channel.Reader.Count == 0 && Interlocked.Exchange(ref _dropping, 0) == 1)
+                    _logger.LogWarning("Market data queue caught up: {Dropped} snapshot(s) were dropped while it was full ({Capacity})",
+                        Interlocked.Exchange(ref _droppedSnapshots, 0), _channelCapacity);
             }
         }
 

@@ -400,7 +400,7 @@ namespace FxFixGateway.Infrastructure.QuickFix
                     {
                         var dto = ParseQuoteRequestDto(message, rawMessage, receivedUtc);
                         // Its own thread rather than the thread pool, so a request never waits for a pool thread (MySql.Data's
-                        // async calls block their thread). Requests are few (about ten an hour on Volbroker).
+                        // wait for a free pooled connection blocks its thread). Requests are few (about ten an hour on Volbroker).
                         _ = Task.Factory.StartNew(() => _quoteRequestService.HandleQuoteRequestAsync(sessionKey, dto),
                                                   CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default).Unwrap();
                     }
