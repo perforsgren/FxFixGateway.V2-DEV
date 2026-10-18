@@ -18,9 +18,14 @@ namespace FxFixGateway.Application.Services
         private readonly Channel<(string SessionKey, IReadOnlyList<TpicapIncrementalEntryDto> Entries)> _incrementalChannel;
         private readonly Task _incrementalConsumerTask;
 
-        private readonly Channel<(string SessionKey, MarketDataSnapshotDto Dto)> _channel;
-        private readonly Task _consumerTask;
+        // One snapshot queue and one writer per session: a session's snapshots are written in arrival order, and a busy
+        // session does not hold up the others (18 Oct: Volbroker's 944 startup snapshots waited 100 s behind FXOhub UAT's
+        // 1,142 in the one shared queue). Created on a session's first snapshot.
+        private readonly ConcurrentDictionary<string, Lazy<SnapshotQueue>> _queues = new(StringComparer.OrdinalIgnoreCase);
+        private readonly Task _reporter;
         private readonly CancellationTokenSource _cts = new();
+        private static readonly TimeSpan ReportEvery = TimeSpan.FromMinutes(1);
+        private static readonly TimeSpan Behind = TimeSpan.FromMinutes(1);
 
         // Cache: sessionKey → securityId → (CurrencyPair, Product, Tenor, Cut, Strategy, Delta)
         private readonly Dictionary<string, Dictionary<string, (string? CurrencyPair, int? Product, string? Tenor, string? Cut, string? Strategy, string? Delta)>> _instrumentCache = new();
@@ -36,10 +41,22 @@ namespace FxFixGateway.Application.Services
         private readonly SemaphoreSlim _checkGate = new(CheckConcurrency, CheckConcurrency);
         private readonly ConcurrentDictionary<(string SessionKey, string SecurityId), Lazy<Task<bool?>>> _checks = new();
 
-        // Snapshots dropped by the full queue (oldest first): the first drop is logged, and the count when it has caught up.
         private readonly int _channelCapacity;
-        private long _droppedSnapshots;
-        private int _dropping;
+
+        private sealed record QueuedSnapshot(MarketDataSnapshotDto Dto, DateTime QueuedUtc);
+
+        private sealed class SnapshotQueue
+        {
+            public SnapshotQueue(string sessionKey) => SessionKey = sessionKey;
+            public string SessionKey { get; }
+            public Channel<QueuedSnapshot> Channel = null!;
+            public Task Consumer = Task.CompletedTask;
+            // Dropped by the full queue (oldest first): the first drop is logged, and the count when it has caught up.
+            public long Dropped;
+            public int Dropping;
+            // Written since the last report.
+            public int Written;
+        }
 
         private static readonly HashSet<string> MarketDataSessions = new(StringComparer.OrdinalIgnoreCase)
         {
@@ -68,14 +85,6 @@ namespace FxFixGateway.Application.Services
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
 
             _channelCapacity = channelCapacity;
-            _channel = Channel.CreateBounded<(string SessionKey, MarketDataSnapshotDto Dto)>(
-                new BoundedChannelOptions(channelCapacity)
-                {
-                    FullMode = BoundedChannelFullMode.DropOldest,
-                    SingleReader = true,
-                    SingleWriter = false
-                },
-                OnSnapshotDropped);
 
             _incrementalChannel = Channel.CreateBounded<(string, IReadOnlyList<TpicapIncrementalEntryDto>)>(
                 new BoundedChannelOptions(channelCapacity)
@@ -85,8 +94,8 @@ namespace FxFixGateway.Application.Services
                     SingleWriter = false
                 });
 
-            _consumerTask = Task.Run(() => ConsumeAsync(_cts.Token));
             _incrementalConsumerTask = Task.Run(() => ConsumeIncrementalAsync(_cts.Token));
+            _reporter = Task.Run(() => ReportAsync(_cts.Token));
         }
 
         public async Task HandleMarketDataSnapshotAsync(string sessionKey, MarketDataSnapshotDto dto)
@@ -122,7 +131,7 @@ namespace FxFixGateway.Application.Services
                 }
             }
 
-            if (!_channel.Writer.TryWrite((sessionKey, dto)))
+            if (!QueueFor(sessionKey).Channel.Writer.TryWrite(new QueuedSnapshot(dto, DateTime.UtcNow)))
             {
                 _logger.LogWarning(
                     "[{Session}] Market data channel full — dropping snapshot for SecurityId={SecId}",
@@ -165,13 +174,63 @@ namespace FxFixGateway.Application.Services
             }
         }
 
-        private void OnSnapshotDropped((string SessionKey, MarketDataSnapshotDto Dto) item)
+        private SnapshotQueue QueueFor(string sessionKey)
+            => _queues.GetOrAdd(sessionKey, key => new Lazy<SnapshotQueue>(() => StartQueue(key))).Value;
+
+        private SnapshotQueue StartQueue(string sessionKey)
         {
-            Interlocked.Increment(ref _droppedSnapshots);
-            if (Interlocked.Exchange(ref _dropping, 1) == 0)
+            var queue = new SnapshotQueue(sessionKey);
+            queue.Channel = Channel.CreateBounded<QueuedSnapshot>(
+                new BoundedChannelOptions(_channelCapacity)
+                {
+                    FullMode = BoundedChannelFullMode.DropOldest,
+                    SingleReader = true,
+                    SingleWriter = false
+                },
+                dropped => OnSnapshotDropped(queue, dropped));
+            queue.Consumer = Task.Run(() => ConsumeAsync(queue, _cts.Token));
+            return queue;
+        }
+
+        private void OnSnapshotDropped(SnapshotQueue queue, QueuedSnapshot item)
+        {
+            Interlocked.Increment(ref queue.Dropped);
+            if (Interlocked.Exchange(ref queue.Dropping, 1) == 0)
                 _logger.LogWarning(
                     "[{Session}] Market data queue full ({Capacity}): dropping the oldest snapshots (first SecurityId={SecId}); the count follows when it has caught up",
-                    item.SessionKey, _channelCapacity, item.Dto.SecurityId);
+                    queue.SessionKey, _channelCapacity, item.Dto.SecurityId);
+        }
+
+        private async Task ReportAsync(CancellationToken ct)
+        {
+            using var timer = new PeriodicTimer(ReportEvery);
+            try
+            {
+                while (await timer.WaitForNextTickAsync(ct))
+                {
+                    try { Report(); }
+                    catch (Exception ex) { _logger.LogError(ex, "Market data queue report failed"); }
+                }
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+            }
+        }
+
+        /// <summary>Once a minute: a warning for each session whose oldest queued snapshot has waited a minute or more.</summary>
+        private void Report()
+        {
+            var now = DateTime.UtcNow;
+            foreach (var lazy in _queues.Values)
+            {
+                if (!lazy.IsValueCreated) continue;
+                var queue = lazy.Value;
+                var written = Interlocked.Exchange(ref queue.Written, 0);
+                if (!queue.Channel.Reader.TryPeek(out var oldest) || now - oldest.QueuedUtc < Behind) continue;
+                _logger.LogWarning(
+                    "[{Session}] Market data queue behind: {Queued} snapshot(s) waiting, the oldest {Oldest:0} s; {Written} written in the last minute",
+                    queue.SessionKey, queue.Channel.Reader.Count, (now - oldest.QueuedUtc).TotalSeconds, written);
+            }
         }
 
         public void MarkSubscribed(string sessionKey, string securityId)
@@ -413,22 +472,29 @@ namespace FxFixGateway.Application.Services
             }
         }
 
-        private async Task ConsumeAsync(CancellationToken ct)
+        private async Task ConsumeAsync(SnapshotQueue queue, CancellationToken ct)
         {
-            await foreach (var (sessionKey, dto) in _channel.Reader.ReadAllAsync(ct))
+            try
             {
-                try { await ProcessSnapshotAsync(sessionKey, dto); }
-                catch (Exception ex)
+                await foreach (var item in queue.Channel.Reader.ReadAllAsync(ct))
                 {
-                    _logger.LogError(ex, "[{Session}] Consumer failed for SecurityId={SecId}",
-                        sessionKey, dto.SecurityId);
-                }
+                    try { await ProcessSnapshotAsync(queue.SessionKey, item.Dto); }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "[{Session}] Consumer failed for SecurityId={SecId}",
+                            queue.SessionKey, item.Dto.SecurityId);
+                    }
+                    Interlocked.Increment(ref queue.Written);
 
-                // Caught up after dropping: how many were lost (each a full snapshot; a later one of the same instrument
-                // carries its whole book, but trades only in a dropped one are not stored).
-                if (_channel.Reader.Count == 0 && Interlocked.Exchange(ref _dropping, 0) == 1)
-                    _logger.LogWarning("Market data queue caught up: {Dropped} snapshot(s) were dropped while it was full ({Capacity})",
-                        Interlocked.Exchange(ref _droppedSnapshots, 0), _channelCapacity);
+                    // Caught up after dropping: how many were lost (each a full snapshot; a later one of the same instrument
+                    // carries its whole book, but trades only in a dropped one are not stored).
+                    if (queue.Channel.Reader.Count == 0 && Interlocked.Exchange(ref queue.Dropping, 0) == 1)
+                        _logger.LogWarning("[{Session}] Market data queue caught up: {Dropped} snapshot(s) were dropped while it was full ({Capacity})",
+                            queue.SessionKey, Interlocked.Exchange(ref queue.Dropped, 0), _channelCapacity);
+                }
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
             }
         }
 
@@ -743,10 +809,13 @@ namespace FxFixGateway.Application.Services
         public async ValueTask DisposeAsync()
         {
             await _cts.CancelAsync();
-            _channel.Writer.Complete();
+            var queues = _queues.Values.Where(q => q.IsValueCreated).Select(q => q.Value).ToList();
+            foreach (var queue in queues) queue.Channel.Writer.TryComplete();
             _incrementalChannel.Writer.Complete();
-            try { await _consumerTask.ConfigureAwait(false); } catch { /* intentional */ }
+            foreach (var queue in queues)
+                try { await queue.Consumer.ConfigureAwait(false); } catch { /* intentional */ }
             try { await _incrementalConsumerTask.ConfigureAwait(false); } catch { /* intentional */ }
+            try { await _reporter.ConfigureAwait(false); } catch { /* intentional */ }
             _cts.Dispose();
         }
 
