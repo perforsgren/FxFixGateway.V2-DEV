@@ -160,7 +160,7 @@ namespace FxFixGateway.UI
                 minPoolSize: 0);
 
             var safeConnStr = System.Text.RegularExpressions.Regex.Replace(
-                connectionString, @"Password=[^;]*", "Password=***");
+                connectionString, @"Password=[^;]*", "Password=***", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
             Log.Information("Using GatewayDb connection string: {ConnectionString} (pool: 0-20)", safeConnStr);
 
             var stpConnectionString = SetConnectionPoolSize(
@@ -169,7 +169,7 @@ namespace FxFixGateway.UI
                 minPoolSize: 0);
 
             var safeSTPConnStr = System.Text.RegularExpressions.Regex.Replace(
-                stpConnectionString, @"Password=[^;]*", "Password=***");
+                stpConnectionString, @"Password=[^;]*", "Password=***", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
             Log.Information("Using STP connection string: {ConnectionString} (pool: 0-30)", safeSTPConnStr);
 
             var fxvolConnectionString = SetConnectionPoolSize(
@@ -178,8 +178,8 @@ namespace FxFixGateway.UI
                 minPoolSize: 0);
 
             var safeFxvolConnStr = System.Text.RegularExpressions.Regex.Replace(
-                fxvolConnectionString, @"Password=[^;]*", "Password=***");
-            Log.Information("Using VolManager connection string: {ConnectionString} (pool: 0-40)", safeFxvolConnStr);
+                fxvolConnectionString, @"Password=[^;]*", "Password=***", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+            Log.Information("Using VolManager connection string: {ConnectionString} (pool: 0-60)", safeFxvolConnStr);
 
             // Infrastructure - Repositories
             services.AddSingleton<ISessionRepository>(sp =>
