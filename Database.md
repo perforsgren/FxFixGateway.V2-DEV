@@ -236,7 +236,8 @@ FXOHUB-data bör därför lagras i **separata tabeller** (t.ex. `fxvol.fxohub_ma
 
 ## FXOhub-RFQ (TP ICAP) — `fxohub_rfq*`
 
-Skript: `docs/sql/20261018_fxohub_rfq.sql`. Skrivs av `FxoRfqService` / `FxoRfqRepository`; läses av pricerns
+Skript: `docs/sql/20261018_fxohub_rfq.sql` (och `20261018_fxohub_rfq_legid.sql`: LegID är en GUID från FXOhub, 36
+tecken, kolumnerna `leg_id` är VARCHAR(64)). Skrivs av `FxoRfqService` / `FxoRfqRepository`; läses av pricerns
 Incoming RFQ-blotter. Egna tabeller enligt noteringen ovan: FXOhub har inget `security_id`, en fråga identifieras med
 `(session_key, quote_req_id)`.
 

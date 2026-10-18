@@ -39,9 +39,9 @@ CREATE TABLE IF NOT EXISTS fxvol.fxohub_rfq_price (
     premium_text        VARCHAR(128)  NULL,                -- its premium two-way as shown
     premium_currency    VARCHAR(3)    NULL,
     premium_unit        VARCHAR(16)   NULL,                -- "% of USD" or "pips"
-    premium_bid         DECIMAL(18,6) NULL,                -- the structure's price if we buy it as quoted (positive)
-    premium_offer       DECIMAL(18,6) NULL,                -- … if we sell it
-    premium_bid_amount  DECIMAL(20,2) NULL,                -- the cash for those, in premium_currency (positive)
+    premium_bid         DECIMAL(18,6) NULL,                -- the structure's price if we buy it as quoted (positive: the buyer pays;
+    premium_offer       DECIMAL(18,6) NULL,                -- … if we sell it                     negative: the buyer receives)
+    premium_bid_amount  DECIMAL(20,2) NULL,                -- the cash for those, in premium_currency (signed the same way)
     premium_offer_amount DECIMAL(20,2) NULL,
     quote_id            VARCHAR(64)   NULL,                -- QuoteID (117) sent
     sent_utc            DATETIME(3)   NULL,

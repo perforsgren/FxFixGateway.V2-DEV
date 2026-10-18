@@ -44,7 +44,7 @@ CREATE TABLE IF NOT EXISTS fxvol.fxohub_rfq_leg (
     id                  BIGINT        NOT NULL AUTO_INCREMENT,
     rfq_id              BIGINT        NOT NULL,
     leg_no              INT           NOT NULL,            -- order in the message
-    leg_id              VARCHAR(16)   NULL,                -- 7940: Leg1, Leg2 …
+    leg_id              VARCHAR(64)   NULL,                -- 7940: a GUID from FXOhub (script 20261018_fxohub_rfq_legid.sql)
     leg_symbol          VARCHAR(32)   NULL,                -- 600
     leg_qty_millions    DECIMAL(18,6) NULL,                -- 687, in millions
     maturity_date       DATE          NULL,                -- 611
@@ -90,7 +90,7 @@ CREATE TABLE IF NOT EXISTS fxvol.fxohub_rfq_quote_entry (
     id                  BIGINT        NOT NULL AUTO_INCREMENT,
     quote_row_id        BIGINT        NOT NULL,
     md_entry_type       VARCHAR(4)    NULL,                -- 269: 0 = bid, 1 = offer
-    leg_id              VARCHAR(16)   NULL,                -- 7940
+    leg_id              VARCHAR(64)   NULL,                -- 7940
     price               DECIMAL(18,6) NULL,                -- 270, leg vol
     size                DECIMAL(18,6) NULL,                -- 271
     position_no         INT           NULL,                -- 290
