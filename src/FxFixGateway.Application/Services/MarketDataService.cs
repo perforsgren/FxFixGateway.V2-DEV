@@ -91,7 +91,20 @@ namespace FxFixGateway.Application.Services
                 var cacheKey = (sessionKey, dto.SecurityId);
                 if (!_subscriptionCache.TryGetValue(cacheKey, out var isSubscribed))
                 {
-                    isSubscribed = await _snapshotRepo.IsSubscribedAsync(sessionKey, dto.SecurityId);
+                    try
+                    {
+                        isSubscribed = await _snapshotRepo.IsSubscribedAsync(sessionKey, dto.SecurityId);
+                    }
+                    catch (Exception ex)
+                    {
+                        // Unknown, not "no": nothing is cached and the next snapshot asks again. A 35=W is a full snapshot,
+                        // so the next one carries the whole book.
+                        _logger.LogWarning(ex,
+                            "[{Session}] 35=W SecurityId={SecId}: subscription check failed — snapshot not stored, checked again on the next one",
+                            sessionKey, dto.SecurityId);
+                        return;
+                    }
+                    // TryAdd: a MarkSubscribed (QuoteRequest) that came meanwhile wins over this answer.
                     _subscriptionCache.TryAdd(cacheKey, isSubscribed);
                 }
 

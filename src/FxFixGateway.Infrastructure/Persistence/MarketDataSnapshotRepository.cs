@@ -31,24 +31,16 @@ namespace FxFixGateway.Infrastructure.Persistence
                   AND security_id   = @SecurityId
                   AND is_subscribed = TRUE;";
 
-            try
-            {
-                await using var connection = new MySqlConnection(_connectionString);
-                await connection.OpenAsync();
+            // No catch: an error is not "not subscribed" (MarketDataService would cache that answer for the instrument).
+            await using var connection = new MySqlConnection(_connectionString);
+            await connection.OpenAsync();
 
-                await using var command = new MySqlCommand(sql, connection);
-                command.Parameters.AddWithValue("@SessionKey", sessionKey);
-                command.Parameters.AddWithValue("@SecurityId", securityId);
+            await using var command = new MySqlCommand(sql, connection);
+            command.Parameters.AddWithValue("@SessionKey", sessionKey);
+            command.Parameters.AddWithValue("@SecurityId", securityId);
 
-                var count = Convert.ToInt64(await command.ExecuteScalarAsync());
-                return count > 0;
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine(
-                    $"[MarketDataSnapshotRepository] IsSubscribedAsync error: {ex.Message}");
-                return false;
-            }
+            var count = Convert.ToInt64(await command.ExecuteScalarAsync());
+            return count > 0;
         }
 
         public async Task<long> InsertSnapshotAsync(MarketDataSnapshot snapshot, IReadOnlyList<MarketTrade> trades)

@@ -11,6 +11,7 @@ namespace FxFixGateway.Domain.Interfaces
         /// <summary>
         /// Kontrollera om ett SecurityID är prenumererat (is_subscribed=true).
         /// Används för att filtrera bort icke-prenumererade 35=W-meddelanden.
+        /// A database error is thrown, not answered as "not subscribed": the caller must not remember an unknown as a no.
         /// </summary>
         Task<bool> IsSubscribedAsync(string sessionKey, string securityId);
 
