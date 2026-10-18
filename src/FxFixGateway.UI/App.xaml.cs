@@ -387,7 +387,8 @@ namespace FxFixGateway.UI
                 var instrRepo = sp.GetRequiredService<IMarketInstrumentRepository>();
                 var subRepo = sp.GetRequiredService<IMarketSubscriptionRepository>();
                 var logger = sp.GetRequiredService<ILogger<QuoteRequestService>>();
-                return new QuoteRequestService(quoteRepo, instrRepo, subRepo, logger);
+                // The market data service's subscription cache: a request's instrument is kept from the request on.
+                return new QuoteRequestService(quoteRepo, instrRepo, subRepo, logger, sp.GetRequiredService<IMarketDataService>());
             });
 
             // FXOhub RFQs (QuoteRequest, QuoteRequestReject, RFQ depth) — fxvol.fxohub_rfq* (docs/sql/20261018_fxohub_rfq.sql)

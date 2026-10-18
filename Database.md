@@ -191,9 +191,13 @@ Inkommande RFQ-förfrågningar (35=R). En rad per leg.
 | `leg_side` | varchar | 624 | B=Buy, S=Sell |
 | `premium_currency` | varchar | 556 | Premiumvaluta |
 | `raw_payload` | longtext | — | Hela FIX-meddelandet |
-| `received_utc` | datetime | — | Mottagingstidpunkt |
+| `received_utc` | datetime | — | När gatewayen tog emot meddelandet (FromApp), UTC — inte när raden skrevs |
 
 ---
+
+En fråga sparas först (en rad per ben) och instrumentet registreras och prenumereras efteråt; samtidigt markeras
+instrumentet som prenumererat i MarketDataService, så att dess 35=W behålls från frågan och framåt. Frågan hanteras på en
+egen tråd (inte tråd-poolen). Loggen skriver per fråga hur lång tid sparandet och prenumerationen tog.
 
 ## Dataflöde (Volbroker)
 

@@ -305,6 +305,7 @@ namespace FxFixGateway.Infrastructure.QuickFix
             var sessionKey = GetSessionKey(sessionId);
             if (sessionKey == null) return;
 
+            var receivedUtc = DateTime.UtcNow;
             var msgType = GetMessageType(message);
             var rawMessage = message.ToString();
 
@@ -312,7 +313,7 @@ namespace FxFixGateway.Infrastructure.QuickFix
                 sessionKey,
                 msgType,
                 rawMessage,
-                DateTime.UtcNow));
+                receivedUtc));
 
             switch (msgType)
             {
@@ -397,8 +398,11 @@ namespace FxFixGateway.Infrastructure.QuickFix
                 case "R":
                     if (_quoteRequestService != null)
                     {
-                        var dto = ParseQuoteRequestDto(message, rawMessage);
-                        _ = Task.Run(() => _quoteRequestService.HandleQuoteRequestAsync(sessionKey, dto));
+                        var dto = ParseQuoteRequestDto(message, rawMessage, receivedUtc);
+                        // Its own thread rather than the thread pool, so a request never waits for a pool thread (MySql.Data's
+                        // async calls block their thread). Requests are few (about ten an hour on Volbroker).
+                        _ = Task.Factory.StartNew(() => _quoteRequestService.HandleQuoteRequestAsync(sessionKey, dto),
+                                                  CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default).Unwrap();
                     }
                     else
                     {
@@ -499,7 +503,7 @@ namespace FxFixGateway.Infrastructure.QuickFix
         ///     711-grupp: 310                     (NoUnderlyings — strategi-typ)
         ///     555-grupp: 600, 764, 620, 611, 598, 612, 623, 622, 624, 556  (NoLegs)
         /// </summary>
-        private QuoteRequestDto ParseQuoteRequestDto(QF.Message message, string rawMessage)
+        private QuoteRequestDto ParseQuoteRequestDto(QF.Message message, string rawMessage, DateTime receivedUtc)
         {
             var quoteReqId = TryGetField(message, 131);
 
@@ -605,7 +609,8 @@ namespace FxFixGateway.Infrastructure.QuickFix
                 DeltaStyle   = deltaStyle,
                 StrategyType = strategyType,
                 Legs         = legs,
-                RawPayload   = rawMessage
+                RawPayload   = rawMessage,
+                ReceivedUtc  = receivedUtc
             };
         }
 

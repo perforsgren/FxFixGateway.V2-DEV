@@ -24,6 +24,9 @@ namespace FxFixGateway.Domain.ValueObjects
         public IReadOnlyList<QuoteRequestLegDto> Legs { get; init; } = Array.Empty<QuoteRequestLegDto>();
 
         public string RawPayload { get; init; } = string.Empty;
+
+        /// <summary>When the gateway received the message (QuickFixApplication.FromApp), UTC: stored as received_utc.</summary>
+        public DateTime ReceivedUtc { get; init; }
     }
 
     /// <summary>En leg ur repeating group tag 555 (NoLegs) i ett 35=R.</summary>

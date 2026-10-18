@@ -14,5 +14,11 @@ namespace FxFixGateway.Domain.Interfaces
         Task HandleMarketDataSnapshotAsync(string sessionKey, MarketDataSnapshotDto dto);
 
         Task HandleMarketDataIncrementalRefreshAsync(string sessionKey, IReadOnlyList<TpicapIncrementalEntryDto> entries);
+
+        /// <summary>
+        /// The instrument is subscribed from now on (a QuoteRequest for it has come): its snapshots are kept, also one that came
+        /// before and was found not subscribed (the answer is cached per instrument).
+        /// </summary>
+        void MarkSubscribed(string sessionKey, string securityId);
     }
 }

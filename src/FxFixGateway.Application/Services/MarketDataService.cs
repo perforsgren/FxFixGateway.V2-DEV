@@ -112,6 +112,13 @@ namespace FxFixGateway.Application.Services
             }
         }
 
+        public void MarkSubscribed(string sessionKey, string securityId)
+        {
+            if (string.IsNullOrEmpty(securityId)) return;
+            // Overwrites a "not subscribed" cached by a snapshot that came before the QuoteRequest was handled.
+            _subscriptionCache[(sessionKey, securityId)] = true;
+        }
+
         public Task HandleMarketDataIncrementalRefreshAsync(string sessionKey, IReadOnlyList<TpicapIncrementalEntryDto> entries)
         {
             if (entries.Count == 0) return Task.CompletedTask;

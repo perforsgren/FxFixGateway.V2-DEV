@@ -10,6 +10,7 @@ namespace FxFixGateway.Application.Services
         private readonly IQuoteRequestRepository      _quoteRequestRepo;
         private readonly IMarketInstrumentRepository  _instrumentRepo;
         private readonly IMarketSubscriptionRepository _subscriptionRepo;
+        private readonly IMarketDataService?           _marketData;
         private readonly ILogger<QuoteRequestService>  _logger;
 
         private static readonly HashSet<string> MarketDataSessions = new(StringComparer.OrdinalIgnoreCase)
@@ -25,8 +26,10 @@ namespace FxFixGateway.Application.Services
             IQuoteRequestRepository quoteRequestRepo,
             IMarketInstrumentRepository instrumentRepo,
             IMarketSubscriptionRepository subscriptionRepo,
-            ILogger<QuoteRequestService> logger)
+            ILogger<QuoteRequestService> logger,
+            IMarketDataService? marketData = null)
         {
+            _marketData        = marketData;
             _quoteRequestRepo  = quoteRequestRepo  ?? throw new ArgumentNullException(nameof(quoteRequestRepo));
             _instrumentRepo    = instrumentRepo    ?? throw new ArgumentNullException(nameof(instrumentRepo));
             _subscriptionRepo  = subscriptionRepo  ?? throw new ArgumentNullException(nameof(subscriptionRepo));
@@ -74,17 +77,18 @@ namespace FxFixGateway.Application.Services
             // }
             // ─────────────────────────────────────────────────────────────────
 
-            // Upserta + aktivera subscription per leg
-            foreach (var leg in filteredLegs)
-                await UpsertAndSubscribeAsync(sessionKey, dto.SecurityId, leg);
-
-            // Spara en rad per leg
+            // The request first: the pricer and Interbank Prices see it as soon as it is stored. Its snapshots (35=W) are
+            // kept from now on (in memory at once; the instrument is marked subscribed in the database below).
+            _marketData?.MarkSubscribed(sessionKey, dto.SecurityId);
+            var started = System.Diagnostics.Stopwatch.StartNew();
+            int saved = 0;
             foreach (var leg in filteredLegs)
             {
                 var entity = MapToEntity(sessionKey, dto, leg);
                 try
                 {
                     var id = await _quoteRequestRepo.InsertAsync(entity);
+                    saved++;
                     _logger.LogDebug(
                         "[{Session}] 35=R saved: Id={Id} SecurityId={SecId} Pair={Pair} Tenor={Tenor} Strike={Strike} PutOrCall={PoC}",
                         sessionKey, id, dto.SecurityId, leg.CurrencyPair, leg.Tenor, leg.StrikePrice, leg.PutOrCall);
@@ -96,6 +100,16 @@ namespace FxFixGateway.Application.Services
                         sessionKey, dto.SecurityId);
                 }
             }
+            var savedMs = started.ElapsedMilliseconds;
+
+            // Then the instrument: upsert + mark subscribed per leg.
+            foreach (var leg in filteredLegs)
+                await UpsertAndSubscribeAsync(sessionKey, dto.SecurityId, leg);
+
+            _logger.LogInformation(
+                "[{Session}] 35=R {QuoteReqId} SecurityId={SecId}: {Saved}/{Legs} leg(s) stored {StoredMs} ms after handling began, instrument subscribed after {TotalMs} ms; received {Received:HH:mm:ss.fff}Z, handled from {Began:HH:mm:ss.fff}Z",
+                sessionKey, dto.QuoteReqId, dto.SecurityId, saved, filteredLegs.Count, savedMs, started.ElapsedMilliseconds,
+                dto.ReceivedUtc, DateTime.UtcNow - started.Elapsed);
         }
 
         /// <summary>
@@ -191,7 +205,8 @@ namespace FxFixGateway.Application.Services
                 LegSide          = leg?.LegSide,
                 PremiumCurrency  = leg?.PremiumCurrency,
                 RawPayload       = dto.RawPayload,
-                ReceivedUtc      = DateTime.UtcNow
+                // When the gateway received the message, not when the row is written.
+                ReceivedUtc      = dto.ReceivedUtc
             };
     }
 }
