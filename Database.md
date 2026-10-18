@@ -14,7 +14,12 @@
 | `market_data_entries` | Detaljrader per MDEntry i ett snapshot (Bid/Ask/Trade) |
 | `active_market_book` | Realtidsbok — senaste aktiva Bid/Ask per instrument och position |
 | `market_trades` | Registrerade affärer (MDEntryType=2) ur snapshots |
-| `quote_requests` | Inkommande RFQ-meddelanden (35=R) |
+| `quote_requests` | Inkommande RFQ-meddelanden (35=R) — Volbroker |
+| `fxohub_rfq` | FXOhub-RFQ:er (35=R), en rad per fråga med status |
+| `fxohub_rfq_leg` | Benen i en FXOhub-RFQ |
+| `fxohub_rfq_quote` | Aktuellt djup per FXOhub-RFQ (35=W i RFQ-sessionen), en rad per pris |
+| `fxohub_rfq_quote_entry` | Benpriser per pris i djupet |
+| `fxohub_rfq_event` | Varje FXOhub-RFQ-meddelande som händelse (revision, hit ratio) |
 
 Referenstabell: `vol_tenor_def` — tillåtna tenorkoder (OD, ON, 1M, 3M, 6M, 1Y …)
 
@@ -225,3 +230,36 @@ Affärslogik: `Application/Services/MarketDataService.cs`, `Application/Services
 `market_instruments` och `active_market_book` använder **Volbrokers `security_id` (tag 48)** som nyckel. TPICAP FXOHUB har inget motsvarande opakt ID — instrument identifieras via `(Symbol, SecurityType, SecurityExchange, TenorValue, OptionStrategy)`. 
 
 FXOHUB-data bör därför lagras i **separata tabeller** (t.ex. `fxvol.fxohub_market_book`) med en sammansatt naturlig nyckel, utan att röra befintliga tabeller som konsumeras av externa appar.
+---
+
+## FXOhub-RFQ (TP ICAP) — `fxohub_rfq*`
+
+Skript: `docs/sql/20261018_fxohub_rfq.sql`. Skrivs av `FxoRfqService` / `FxoRfqRepository`; läses av pricerns
+Incoming RFQ-blotter. Egna tabeller enligt noteringen ovan: FXOhub har inget `security_id`, en fråga identifieras med
+`(session_key, quote_req_id)`.
+
+| Tabell | Nyckel | Innehåll |
+|--------|--------|----------|
+| `fxohub_rfq` | `(session_key, quote_req_id)` unik | Frågan: status (`INCOMING`, `CANCELLED`; senare `PICKED_UP`, `PRICED`, `TRADED` …), BrokerID (7933), TraderID (9536), hedge (9015/9016), premiedag (5475), par (55), strategi (9126, kod och namn), sida (54), tider (60/62/126), NetDelta/NetVega, egen fråga (NoPartyIDs), senaste djup (`has_market`, `last_traded_price`), rått meddelande |
+| `fxohub_rfq_leg` | `rfq_id` → `fxohub_rfq.id` | Ett ben per rad: LegID (7940), mängd i miljoner (687), expiry (611), strike (612) eller delta (9075), LegSide (624), löptid (6215, kod och namn), call/put (6713), cut (9125), leverans (743), ATMType (6005), valutor (556, 9074, 9034, 120) |
+| `fxohub_rfq_quote` | `(session_key, quote_req_id)` | Aktuellt djup: ett pris per rad i ordning bäst → sämst, strategins vol bid/offer (6001/6002), OwnQuote (5331), OwnQuoteRequestor (6012). Ersätts helt av varje djup-meddelande |
+| `fxohub_rfq_quote_entry` | `quote_row_id` → `fxohub_rfq_quote.id` | Benpriser (vol) per pris: typ (269), LegID, pris (270), storlek, MDPxRelatedTo (10502) |
+| `fxohub_rfq_event` | — | En rad per meddelande: typ (`INCOMING`, `CANCELLED`, `CANCELLED_UNKNOWN`, `DEPTH`, `DEPTH_EXECUTION`, `INVALID`), detalj och rått meddelande |
+
+### Dataflöde (FXOhub RFQ-session)
+
+35=R med 9015/5475 (FXOhubs layout)
+→ fxohub_rfq (upsert på session + QuoteReqID; status behålls vid omsändning)
+→ fxohub_rfq_leg (ersätts)
+→ fxohub_rfq_event (INCOMING)
+
+35=AG (QuoteRequestReject)
+→ fxohub_rfq.status = CANCELLED med orsak (658 + 58)
+→ fxohub_rfq_event (CANCELLED, eller CANCELLED_UNKNOWN om frågan inte finns)
+
+35=W med 131 (RFQ-djup, inte orderbok)
+→ fxohub_rfq_quote + fxohub_rfq_quote_entry (ersätts; tomt vid "No Market Data", 6003=1)
+→ fxohub_rfq.has_market / last_traded_price / depth_updated_utc
+→ fxohub_rfq_event (DEPTH, eller DEPTH_EXECUTION när MDSource 5177 = 0)
+
+RFQ-sessionen måste använda `FIX44_FXOhub.xml` som data dictionary, så att grupperna (146/555/453 och 296/268) tolkas.

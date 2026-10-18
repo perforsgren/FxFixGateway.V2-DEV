@@ -26,6 +26,7 @@ namespace FxFixGateway.Infrastructure.QuickFix
         private readonly IQuoteRequestService?           _quoteRequestService;
         private readonly ISessionHeartbeatNotifier?      _heartbeatNotifier;
         private readonly IPushNotificationService?         _pushNotification;
+        private readonly IFxoRfqService?                 _fxoRfqService;
 
         private readonly Dictionary<string, SSLTunnelProxy> _sslTunnels = new();
 
@@ -56,7 +57,8 @@ namespace FxFixGateway.Infrastructure.QuickFix
             IMarketDataService? marketDataService              = null,
             IQuoteRequestService? quoteRequestService          = null,
             ISessionHeartbeatNotifier? heartbeatNotifier       = null,
-            IPushNotificationService? pushNotification         = null)
+            IPushNotificationService? pushNotification         = null,
+            IFxoRfqService? fxoRfqService                      = null)
         {
             _logger              = logger;
             _dataDictionaryPath  = dataDictionaryPath ?? GetDefaultDataDictionaryPath();
@@ -69,6 +71,7 @@ namespace FxFixGateway.Infrastructure.QuickFix
             _quoteRequestService = quoteRequestService;
             _heartbeatNotifier   = heartbeatNotifier;
             _pushNotification    = pushNotification;
+            _fxoRfqService       = fxoRfqService;
         }
 
         public async Task InitializeAsync(IEnumerable<SessionConfiguration> sessions)
@@ -216,7 +219,9 @@ namespace FxFixGateway.Infrastructure.QuickFix
                 null,                    // mdSubscriber — hanteras via proxy
                 _marketDataService,
                 _quoteRequestService,
-                _heartbeatNotifier);
+                _heartbeatNotifier,
+                _pushNotification,       // OnLogout's disconnect notice (was not passed before)
+                _fxoRfqService);
             _application.StatusChanged += OnStatusChanged;
             _application.MessageReceived += OnMessageReceived;
             _application.MessageSent += OnMessageSent;

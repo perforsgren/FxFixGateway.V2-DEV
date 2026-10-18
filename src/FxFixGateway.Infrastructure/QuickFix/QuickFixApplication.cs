@@ -26,6 +26,7 @@ namespace FxFixGateway.Infrastructure.QuickFix
         private readonly IMarketDataSubscriber?        _mdSubscriber;
         private readonly IMarketDataService?           _marketDataService;
         private readonly IQuoteRequestService?         _quoteRequestService;
+        private readonly IFxoRfqService?               _fxoRfqService;
         private readonly ISessionHeartbeatNotifier?    _heartbeatNotifier;
         private readonly IPushNotificationService?     _pushNotification;
 
@@ -55,7 +56,8 @@ namespace FxFixGateway.Infrastructure.QuickFix
             IMarketDataService? marketDataService          = null,
             IQuoteRequestService? quoteRequestService      = null,
             ISessionHeartbeatNotifier? heartbeatNotifier   = null,
-            IPushNotificationService? pushNotification      = null)
+            IPushNotificationService? pushNotification      = null,
+            IFxoRfqService? fxoRfqService                  = null)
         {
             _sessionKeyMap      = sessionKeyMap ?? throw new ArgumentNullException(nameof(sessionKeyMap));
             _sessionCredentials = sessionCredentials ?? new Dictionary<string, (string, string)>();
@@ -71,6 +73,7 @@ namespace FxFixGateway.Infrastructure.QuickFix
             _quoteRequestService = quoteRequestService;
             _heartbeatNotifier   = heartbeatNotifier;
             _pushNotification    = pushNotification;
+            _fxoRfqService       = fxoRfqService;
         }
 
         /// <summary>
@@ -322,6 +325,15 @@ namespace FxFixGateway.Infrastructure.QuickFix
                         break;
                     }
 
+                // FXOhub RFQ market depth (W naming its QuoteRequest): not order book market data.
+                case "W" when FxoRfqMessageParser.IsFxoRfqDepth(message):
+                    HandleFxoRfq(sessionKey, msgType, () =>
+                    {
+                        var dto = FxoRfqMessageParser.ParseRfqDepth(message, rawMessage);
+                        return () => _fxoRfqService!.HandleRfqDepthAsync(sessionKey, dto);
+                    });
+                    break;
+
                 case "W" when _marketDataService != null:
                     {
                         var isTpicap = sessionKey.Equals("FXOHUB_UAT", StringComparison.OrdinalIgnoreCase);
@@ -343,6 +355,24 @@ namespace FxFixGateway.Infrastructure.QuickFix
                         break;
                     }
 
+                // FXOhub QuoteRequest (its own layout, no SecurityID): stored by the FXOhub RFQ service.
+                case "R" when FxoRfqMessageParser.IsFxoQuoteRequest(message):
+                    HandleFxoRfq(sessionKey, msgType, () =>
+                    {
+                        var dto = FxoRfqMessageParser.ParseQuoteRequest(message, rawMessage);
+                        return () => _fxoRfqService!.HandleQuoteRequestAsync(sessionKey, dto);
+                    });
+                    break;
+
+                // QuoteRequestReject: an RFQ was cancelled (only FXOhub sends these to us today).
+                case "AG":
+                    HandleFxoRfq(sessionKey, msgType, () =>
+                    {
+                        var dto = FxoRfqMessageParser.ParseQuoteRequestReject(message, rawMessage);
+                        return () => _fxoRfqService!.HandleQuoteRequestRejectAsync(sessionKey, dto);
+                    });
+                    break;
+
                 case "R":
                     if (_quoteRequestService != null)
                     {
@@ -359,6 +389,46 @@ namespace FxFixGateway.Infrastructure.QuickFix
         }
 
         // ── Privata hjälpmetoder ────────────────────────────────────────────────
+
+        /// <summary>
+        /// Parses an FXOhub RFQ message on the QuickFIX thread (the message object is not used after this call) and
+        /// hands the storing to a background task, so the session never waits on the database. A message that cannot
+        /// be parsed or handled is reported, not dropped silently.
+        /// </summary>
+        private void HandleFxoRfq(string sessionKey, string msgType, Func<Func<Task>> parse)
+        {
+            if (_fxoRfqService == null)
+            {
+                ErrorOccurred?.Invoke(this, new ErrorOccurredEvent(
+                    sessionKey, $"FXOhub RFQ message 35={msgType} received but no FXOhub RFQ service is configured — not stored"));
+                return;
+            }
+
+            Func<Task> handle;
+            try
+            {
+                handle = parse();
+            }
+            catch (Exception ex)
+            {
+                ErrorOccurred?.Invoke(this, new ErrorOccurredEvent(
+                    sessionKey, $"FXOhub RFQ message 35={msgType} could not be parsed: {ex.Message}", ex));
+                return;
+            }
+
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    await handle();
+                }
+                catch (Exception ex)
+                {
+                    ErrorOccurred?.Invoke(this, new ErrorOccurredEvent(
+                        sessionKey, $"FXOhub RFQ message 35={msgType} could not be handled: {ex.Message}", ex));
+                }
+            });
+        }
 
         /// <summary>
         /// Extraherar data ur QuoteRequest (35=R).

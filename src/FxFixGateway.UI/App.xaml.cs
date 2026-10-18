@@ -277,6 +277,7 @@ namespace FxFixGateway.UI
                 var quoteRequestSvc = sp.GetRequiredService<IQuoteRequestService>();
                 var heartbeatNotifier = sp.GetRequiredService<ISessionHeartbeatNotifier>();
                 var pushNotification = sp.GetRequiredService<IPushNotificationService>(); // ← lägg till
+                var fxoRfqService = sp.GetRequiredService<IFxoRfqService>();
 
                 return new QuickFixEngine(
                     logger,
@@ -289,7 +290,8 @@ namespace FxFixGateway.UI
                     mdService,
                     quoteRequestSvc,
                     heartbeatNotifier,
-                    pushNotification); // ← lägg till
+                    pushNotification, // ← lägg till
+                    fxoRfqService);
             });
 
             // Application Services
@@ -385,6 +387,15 @@ namespace FxFixGateway.UI
                 var logger = sp.GetRequiredService<ILogger<QuoteRequestService>>();
                 return new QuoteRequestService(quoteRepo, instrRepo, subRepo, logger);
             });
+
+            // FXOhub RFQs (QuoteRequest, QuoteRequestReject, RFQ depth) — fxvol.fxohub_rfq* (docs/sql/20261018_fxohub_rfq.sql)
+            services.AddSingleton<IFxoRfqRepository>(sp =>
+                new FxoRfqRepository(fxvolConnectionString));
+
+            services.AddSingleton<IFxoRfqService>(sp =>
+                new FxoRfqService(
+                    sp.GetRequiredService<IFxoRfqRepository>(),
+                    sp.GetRequiredService<ILogger<FxoRfqService>>()));
 
             services.AddSingleton<IPushNotificationService, PushoverNotificationService>();
             services.AddHostedService<FixEngineHostedService>();
