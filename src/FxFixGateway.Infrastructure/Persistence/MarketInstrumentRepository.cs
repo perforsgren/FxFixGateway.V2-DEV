@@ -144,6 +144,32 @@ namespace FxFixGateway.Infrastructure.Persistence
             return await command.ExecuteNonQueryAsync();
         }
 
+        public async Task<IReadOnlySet<string>> GetSubscribedAsync(string sessionKey, IReadOnlyCollection<string> securityIds)
+        {
+            var subscribed = new HashSet<string>(StringComparer.Ordinal);
+            var ids = securityIds.Distinct().ToList();
+            if (ids.Count == 0) return subscribed;
+
+            var paramNames = ids.Select((_, i) => $"@Id{i}").ToList();
+            var sql = $@"
+                SELECT security_id
+                FROM   fxvol.market_instruments
+                WHERE  session_key   = @SessionKey
+                  AND  is_subscribed = TRUE
+                  AND  security_id   IN ({string.Join(",", paramNames)});";
+
+            await using var connection = new MySqlConnection(_connectionString);
+            await connection.OpenAsync();
+            await using var command = new MySqlCommand(sql, connection);
+            command.Parameters.AddWithValue("@SessionKey", sessionKey);
+            for (int i = 0; i < ids.Count; i++)
+                command.Parameters.AddWithValue(paramNames[i], ids[i]);
+            await using var reader = await command.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+                subscribed.Add(reader.GetString(0));
+            return subscribed;
+        }
+
         public async Task<MarketInstrument?> GetBySecurityIdAsync(string sessionKey, string securityId)
         {
             const string sql = @"

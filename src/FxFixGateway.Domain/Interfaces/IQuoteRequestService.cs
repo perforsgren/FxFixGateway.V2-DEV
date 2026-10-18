@@ -13,5 +13,12 @@ namespace FxFixGateway.Domain.Interfaces
         /// Anropas från QuickFixApplication.FromApp när MsgType=R tas emot.
         /// </summary>
         Task HandleQuoteRequestAsync(string sessionKey, QuoteRequestDto dto);
+
+        /// <summary>
+        /// Subscribes again the instruments of requests received since <paramref name="sinceUtc"/> that are not subscribed in
+        /// the database (storing or marking them failed when the request came, or the gateway restarted since); requests of
+        /// the last two minutes are left to their own handling. Returns how many were subscribed now.
+        /// </summary>
+        Task<int> ResubscribeAsync(DateTime sinceUtc);
     }
 }

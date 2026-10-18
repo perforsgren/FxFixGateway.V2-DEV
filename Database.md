@@ -198,6 +198,9 @@ Inkommande RFQ-förfrågningar (35=R). En rad per leg.
 En fråga sparas först (en rad per ben) och instrumentet registreras och prenumereras efteråt; samtidigt markeras
 instrumentet som prenumererat i MarketDataService, så att dess 35=W behålls från frågan och framåt. Frågan hanteras på en
 egen tråd (inte tråd-poolen). Loggen skriver per fråga hur lång tid sparandet och prenumerationen tog.
+Varje minut stämmer `QuoteRequestResubscribeService` av: instrumenten för de senaste 24 timmarnas frågor (äldre än 2
+min) som inte är `is_subscribed` i `market_instruments` registreras och markeras igen (misslyckat vid frågan, eller
+omstart sedan). Ett misslyckat försök loggas och görs om nästa minut.
 
 ## Dataflöde (Volbroker)
 

@@ -19,6 +19,9 @@ namespace FxFixGateway.Domain.Interfaces
         /// Returns how many of them were found in market_instruments; a database error is thrown (the caller logs it).
         Task<int> MarkAsSubscribedAsync(string sessionKey, IEnumerable<string> securityIds);
 
+        /// <summary>Which of <paramref name="securityIds"/> are subscribed (is_subscribed = true); a database error is thrown.</summary>
+        Task<IReadOnlySet<string>> GetSubscribedAsync(string sessionKey, IReadOnlyCollection<string> securityIds);
+
         /// <summary>Hämta ett specifikt instrument via SecurityID — används för meta-lookup i MarketDataService.</summary>
         Task<MarketInstrument?> GetBySecurityIdAsync(string sessionKey, string securityId);
 

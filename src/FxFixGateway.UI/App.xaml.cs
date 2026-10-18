@@ -392,6 +392,9 @@ namespace FxFixGateway.UI
                 return new QuoteRequestService(quoteRepo, instrRepo, subRepo, logger, sp.GetRequiredService<IMarketDataService>());
             });
 
+            // Every minute: Volbroker requests' instruments not subscribed in the database are subscribed again.
+            services.AddHostedService<QuoteRequestResubscribeService>();
+
             // FXOhub RFQs (QuoteRequest, QuoteRequestReject, RFQ depth) — fxvol.fxohub_rfq* (docs/sql/20261018_fxohub_rfq.sql)
             services.AddSingleton<IFxoRfqRepository>(sp =>
                 new FxoRfqRepository(fxvolConnectionString));

@@ -63,5 +63,54 @@ namespace FxFixGateway.Infrastructure.Persistence
 
             return Convert.ToInt64(await command.ExecuteScalarAsync());
         }
+
+        public async Task<IReadOnlyList<QuoteRequest>> GetSinceAsync(string sessionKey, DateTime sinceUtc)
+        {
+            const string sql = @"
+                SELECT id, session_key, quote_req_id, security_id, symbol, product, quote_style, delta_style, strategy_type,
+                       currency_pair, put_or_call, tenor, expiry_date, cut, strike_price, leg_order_qty, notional_currency,
+                       leg_side, premium_currency, received_utc
+                FROM fxvol.quote_requests
+                WHERE session_key = @SessionKey AND received_utc >= @SinceUtc
+                ORDER BY id;";
+
+            var rows = new List<QuoteRequest>();
+            await using var connection = new MySqlConnection(_connectionString);
+            await connection.OpenAsync();
+            await using var command = new MySqlCommand(sql, connection);
+            command.Parameters.AddWithValue("@SessionKey", sessionKey);
+            command.Parameters.AddWithValue("@SinceUtc", sinceUtc);
+            await using var reader = await command.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                string? Str(string c) { var i = reader.GetOrdinal(c); return reader.IsDBNull(i) ? null : Convert.ToString(reader.GetValue(i)); }
+                decimal? Dec(string c) { var i = reader.GetOrdinal(c); return reader.IsDBNull(i) ? null : reader.GetDecimal(i); }
+                int? Int(string c) { var i = reader.GetOrdinal(c); return reader.IsDBNull(i) ? null : Convert.ToInt32(reader.GetValue(i)); }
+                rows.Add(new QuoteRequest
+                {
+                    Id               = reader.GetInt64(reader.GetOrdinal("id")),
+                    SessionKey       = reader.GetString(reader.GetOrdinal("session_key")),
+                    QuoteReqId       = Str("quote_req_id"),
+                    SecurityId       = Str("security_id"),
+                    Symbol           = Str("symbol"),
+                    Product          = Int("product"),
+                    QuoteStyle       = Str("quote_style"),
+                    DeltaStyle       = Str("delta_style"),
+                    StrategyType     = Str("strategy_type"),
+                    CurrencyPair     = Str("currency_pair"),
+                    PutOrCall        = Str("put_or_call"),
+                    Tenor            = Str("tenor"),
+                    ExpiryDate       = Str("expiry_date"),
+                    Cut              = Str("cut"),
+                    StrikePrice      = Dec("strike_price"),
+                    LegOrderQty      = Dec("leg_order_qty"),
+                    NotionalCurrency = Str("notional_currency"),
+                    LegSide          = Str("leg_side"),
+                    PremiumCurrency  = Str("premium_currency"),
+                    ReceivedUtc      = reader.GetDateTime(reader.GetOrdinal("received_utc")),
+                });
+            }
+            return rows;
+        }
     }
 }

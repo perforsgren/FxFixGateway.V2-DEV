@@ -141,40 +141,99 @@ namespace FxFixGateway.Application.Services
             }
         }
 
+        // Requests younger than this are left to their own handling (it stores the rows first and subscribes after).
+        private static readonly TimeSpan ResubscribeAfter = TimeSpan.FromMinutes(2);
+
+        public async Task<int> ResubscribeAsync(DateTime sinceUtc)
+        {
+            int done = 0;
+            var settledBefore = DateTime.UtcNow - ResubscribeAfter;
+            foreach (var sessionKey in MarketDataSessions)
+            {
+                var requests = (await _quoteRequestRepo.GetSinceAsync(sessionKey, sinceUtc))
+                    .Where(r => !string.IsNullOrEmpty(r.SecurityId) && r.ReceivedUtc <= settledBefore)
+                    .GroupBy(r => r.SecurityId!)
+                    .ToList();
+                if (requests.Count == 0) continue;
+
+                var subscribed = await _instrumentRepo.GetSubscribedAsync(sessionKey, requests.Select(g => g.Key).ToList());
+                foreach (var request in requests.Where(g => !subscribed.Contains(g.Key)))
+                {
+                    // The newest leg: the instrument as the request handling stores it (each leg overwrites it, the last stays).
+                    var row = request.OrderBy(r => r.Id).Last();
+                    _marketData?.MarkSubscribed(sessionKey, request.Key);
+                    try
+                    {
+                        if (await StoreAndMarkAsync(Instrument(sessionKey, request.Key, row.CurrencyPair, row.Tenor, row.ExpiryDate, row.Cut,
+                                                                row.StrikePrice, row.QuoteStyle, row.DeltaStyle, row.PremiumCurrency, row.NotionalCurrency)))
+                        {
+                            done++;
+                            _logger.LogWarning(
+                                "[{Session}] SecurityId={SecId} (QuoteReqID {QuoteReqId}, received {Received:yyyy-MM-dd HH:mm:ss}Z) was not subscribed in the database — subscribed now",
+                                sessionKey, request.Key, row.QuoteReqId, row.ReceivedUtc);
+                        }
+                        else
+                            _logger.LogError(
+                                "[{Session}] SecurityId={SecId} still not in market_instruments after the upsert — tried again in a minute",
+                                sessionKey, request.Key);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex,
+                            "[{Session}] SecurityId={SecId} still not subscribed in the database — tried again in a minute",
+                            sessionKey, request.Key);
+                    }
+                }
+            }
+            return done;
+        }
+
+        /// <summary>A Specific Interest instrument (product 20) as a request's leg describes it.</summary>
+        private static MarketInstrument Instrument(string sessionKey, string securityId, string? pair, string? tenor, string? expiry,
+                                                   string? cut, decimal? strike, string? quoteStyle, string? deltaStyle,
+                                                   string? premiumCcy, string? amountCcy)
+        {
+            DateTime? expiryDate = null;
+            if (!string.IsNullOrEmpty(expiry) &&
+                DateTime.TryParseExact(expiry, "yyyyMMdd",
+                    System.Globalization.CultureInfo.InvariantCulture,
+                    System.Globalization.DateTimeStyles.None, out var parsed))
+                expiryDate = parsed;
+
+            return new MarketInstrument
+            {
+                SessionKey    = sessionKey,
+                SecurityId    = securityId,
+                CurrencyPair  = pair,
+                Product       = 20,
+                Tenor         = tenor,
+                ExpiryDate    = expiryDate,
+                Cut           = cut,
+                Strike        = strike?.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                QuoteStyle    = quoteStyle,
+                DeltaStyle    = deltaStyle,
+                PremiumCcy    = premiumCcy,
+                AmountCcy     = amountCcy,
+                DiscoveredUtc = DateTime.UtcNow
+            };
+        }
+
+        /// <summary>Upserts the instrument and marks it subscribed; false when it was not found to mark. A database error is thrown.</summary>
+        private async Task<bool> StoreAndMarkAsync(MarketInstrument instrument)
+        {
+            await _instrumentRepo.UpsertAsync(instrument);
+            return await _instrumentRepo.MarkAsSubscribedAsync(instrument.SessionKey, new[] { instrument.SecurityId }) > 0;
+        }
+
         private async Task UpsertAndSubscribeAsync(string sessionKey, string securityId, QuoteRequestLegDto? leg)
         {
             try
             {
-                DateTime? expiryDate = null;
-                if (!string.IsNullOrEmpty(leg?.ExpiryDate) &&
-                    DateTime.TryParseExact(leg.ExpiryDate, "yyyyMMdd",
-                        System.Globalization.CultureInfo.InvariantCulture,
-                        System.Globalization.DateTimeStyles.None, out var parsed))
-                    expiryDate = parsed;
-
-                var instrument = new MarketInstrument
-                {
-                    SessionKey    = sessionKey,
-                    SecurityId    = securityId,
-                    CurrencyPair  = leg?.CurrencyPair,
-                    Product       = 20,
-                    Tenor         = leg?.Tenor,
-                    ExpiryDate    = expiryDate,
-                    Cut           = leg?.Cut,
-                    Strike        = leg?.StrikePrice?.ToString(System.Globalization.CultureInfo.InvariantCulture),
-                    QuoteStyle    = leg?.QuoteStyle,
-                    DeltaStyle    = leg?.DeltaStyle,
-                    PremiumCcy    = leg?.PremiumCurrency,
-                    AmountCcy     = leg?.NotionalCurrency,
-                    DiscoveredUtc = DateTime.UtcNow
-                };
-
-                await _instrumentRepo.UpsertAsync(instrument);
-                var marked = await _instrumentRepo.MarkAsSubscribedAsync(sessionKey, new[] { securityId });
-                if (marked == 0)
+                if (!await StoreAndMarkAsync(Instrument(sessionKey, securityId, leg?.CurrencyPair, leg?.Tenor, leg?.ExpiryDate, leg?.Cut,
+                                                        leg?.StrikePrice, leg?.QuoteStyle, leg?.DeltaStyle, leg?.PremiumCurrency, leg?.NotionalCurrency)))
                 {
                     _logger.LogError(
-                        "[{Session}] 35=R SecurityId={SecId} is not in market_instruments after the upsert: not marked subscribed in the database — its snapshots are kept until the gateway restarts",
+                        "[{Session}] 35=R SecurityId={SecId} is not in market_instruments after the upsert: not marked subscribed in the database — tried again by the resubscribe check",
                         sessionKey, securityId);
                     return;
                 }
@@ -186,7 +245,7 @@ namespace FxFixGateway.Application.Services
             catch (Exception ex)
             {
                 _logger.LogError(ex,
-                    "[{Session}] Failed to upsert/subscribe SecurityId={SecId} — not marked subscribed in the database; its snapshots are kept until the gateway restarts",
+                    "[{Session}] Failed to upsert/subscribe SecurityId={SecId} — not marked subscribed in the database; tried again by the resubscribe check",
                     sessionKey, securityId);
             }
         }
