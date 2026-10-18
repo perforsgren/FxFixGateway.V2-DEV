@@ -21,15 +21,11 @@ namespace FxFixGateway.Infrastructure.Persistence
             _connectionString = connectionString;
         }
 
-        public async Task LogIncomingAsync(string sessionKey, string msgType, string rawMessage)
-        {
-            await LogMessageAsync(sessionKey, msgType, rawMessage, MessageDirection.Incoming);
-        }
+        public Task LogIncomingAsync(string sessionKey, string msgType, string rawMessage, DateTime receivedUtc)
+            => LogMessageAsync(sessionKey, msgType, rawMessage, MessageDirection.Incoming, receivedUtc);
 
-        public async Task LogOutgoingAsync(string sessionKey, string msgType, string rawMessage)
-        {
-            await LogMessageAsync(sessionKey, msgType, rawMessage, MessageDirection.Outgoing);
-        }
+        public Task LogOutgoingAsync(string sessionKey, string msgType, string rawMessage, DateTime sentUtc)
+            => LogMessageAsync(sessionKey, msgType, rawMessage, MessageDirection.Outgoing, sentUtc);
 
         public async Task<IEnumerable<MessageLogEntry>> GetRecentAsync(string sessionKey, int maxCount = 100)
         {
@@ -96,7 +92,8 @@ namespace FxFixGateway.Infrastructure.Persistence
             return result;
         }
 
-        private async Task LogMessageAsync(string sessionKey, string msgType, string rawMessage, MessageDirection direction)
+        /// <summary>One row in MessageIn. A database error is thrown: the caller (MessageProcessingService) counts and logs it.</summary>
+        private async Task LogMessageAsync(string sessionKey, string msgType, string rawMessage, MessageDirection direction, DateTime atUtc)
         {
             var sql = @"
                 INSERT INTO MessageIn
@@ -104,36 +101,17 @@ namespace FxFixGateway.Infrastructure.Persistence
                 VALUES
                 (@SessionKey, @MessageType, @RawMessage, @ReceivedUtc, @Direction);";
 
-            try
-            {
-                await using var connection = new MySqlConnection(_connectionString);
-                await connection.OpenAsync();
+            await using var connection = new MySqlConnection(_connectionString);
+            await connection.OpenAsync();
 
-                await using var command = new MySqlCommand(sql, connection);
-                command.Parameters.AddWithValue("@SessionKey", sessionKey);
-                command.Parameters.AddWithValue("@MessageType", msgType ?? "?");
-                command.Parameters.AddWithValue("@RawMessage", rawMessage ?? string.Empty);
-                command.Parameters.AddWithValue("@ReceivedUtc", DateTime.UtcNow);
-                command.Parameters.AddWithValue("@Direction", direction.ToString());
+            await using var command = new MySqlCommand(sql, connection);
+            command.Parameters.AddWithValue("@SessionKey", sessionKey);
+            command.Parameters.AddWithValue("@MessageType", msgType ?? "?");
+            command.Parameters.AddWithValue("@RawMessage", rawMessage ?? string.Empty);
+            command.Parameters.AddWithValue("@ReceivedUtc", atUtc);
+            command.Parameters.AddWithValue("@Direction", direction.ToString());
 
-                await command.ExecuteNonQueryAsync();
-            }
-            catch (OperationCanceledException)
-            {
-                // Expected during application shutdown — SSL handshake cancelled.
-            }
-            catch (MySqlException ex)
-            {
-                System.Diagnostics.Debug.WriteLine("========== MySQL ERROR in LogMessageAsync ==========");
-                System.Diagnostics.Debug.WriteLine($"Error Number: {ex.Number}");
-                System.Diagnostics.Debug.WriteLine($"SqlState: {ex.SqlState}");
-                System.Diagnostics.Debug.WriteLine($"Message: {ex.Message}");
-                System.Diagnostics.Debug.WriteLine($"SessionKey: {sessionKey}");
-                System.Diagnostics.Debug.WriteLine($"MsgType: {msgType}");
-                System.Diagnostics.Debug.WriteLine($"Direction: {direction}");
-                System.Diagnostics.Debug.WriteLine($"StackTrace: {ex.StackTrace}");
-                System.Diagnostics.Debug.WriteLine("=====================================================");
-            }
+            await command.ExecuteNonQueryAsync();
         }
 
         private string GetMessageSummary(string msgType)
