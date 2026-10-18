@@ -240,7 +240,7 @@ Incoming RFQ-blotter. Egna tabeller enligt noteringen ovan: FXOhub har inget `se
 
 | Tabell | Nyckel | Innehåll |
 |--------|--------|----------|
-| `fxohub_rfq` | `(session_key, quote_req_id)` unik | Frågan: status (`INCOMING`, `CANCELLED`; senare `PICKED_UP`, `PRICED`, `TRADED` …), BrokerID (7933), TraderID (9536), hedge (9015/9016), premiedag (5475), par (55), strategi (9126, kod och namn), sida (54), tider (60/62/126), NetDelta/NetVega, egen fråga (NoPartyIDs), senaste djup (`has_market`, `last_traded_price`), rått meddelande |
+| `fxohub_rfq` | `(session_key, quote_req_id)` unik | Frågan: status (`INCOMING`, `CANCELLED`; från pricern `PICKED_UP`, `PASSED`; senare `PRICED`, `TRADED` …), vem som tagit den (`picked_up_by`, `picked_up_utc`, skript `20261018_fxohub_rfq_pickup.sql`), BrokerID (7933), TraderID (9536), hedge (9015/9016), premiedag (5475), par (55), strategi (9126, kod och namn), sida (54), tider (60/62/126), NetDelta/NetVega, egen fråga (NoPartyIDs), senaste djup (`has_market`, `last_traded_price`), rått meddelande |
 | `fxohub_rfq_leg` | `rfq_id` → `fxohub_rfq.id` | Ett ben per rad: LegID (7940), mängd i miljoner (687), expiry (611), strike (612) eller delta (9075), LegSide (624), löptid (6215, kod och namn), call/put (6713), cut (9125), leverans (743), ATMType (6005), valutor (556, 9074, 9034, 120) |
 | `fxohub_rfq_quote` | `(session_key, quote_req_id)` | Aktuellt djup: ett pris per rad i ordning bäst → sämst, strategins vol bid/offer (6001/6002), OwnQuote (5331), OwnQuoteRequestor (6012). Ersätts helt av varje djup-meddelande |
 | `fxohub_rfq_quote_entry` | `quote_row_id` → `fxohub_rfq_quote.id` | Benpriser (vol) per pris: typ (269), LegID, pris (270), storlek, MDPxRelatedTo (10502) |
