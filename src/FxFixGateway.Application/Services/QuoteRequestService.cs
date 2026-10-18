@@ -170,7 +170,14 @@ namespace FxFixGateway.Application.Services
                 };
 
                 await _instrumentRepo.UpsertAsync(instrument);
-                await _instrumentRepo.MarkAsSubscribedAsync(sessionKey, new[] { securityId });
+                var marked = await _instrumentRepo.MarkAsSubscribedAsync(sessionKey, new[] { securityId });
+                if (marked == 0)
+                {
+                    _logger.LogError(
+                        "[{Session}] 35=R SecurityId={SecId} is not in market_instruments after the upsert: not marked subscribed in the database — its snapshots are kept until the gateway restarts",
+                        sessionKey, securityId);
+                    return;
+                }
 
                 _logger.LogInformation(
                     "[{Session}] 35=R: is_subscribed=true för SecurityId={SecId} Pair={Pair} Tenor={Tenor}",
@@ -179,7 +186,8 @@ namespace FxFixGateway.Application.Services
             catch (Exception ex)
             {
                 _logger.LogError(ex,
-                    "[{Session}] Failed to upsert/subscribe SecurityId={SecId}", sessionKey, securityId);
+                    "[{Session}] Failed to upsert/subscribe SecurityId={SecId} — not marked subscribed in the database; its snapshots are kept until the gateway restarts",
+                    sessionKey, securityId);
             }
         }
 

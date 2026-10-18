@@ -122,7 +122,17 @@ namespace FxFixGateway.Application.Services
                     DeltaStyle    = dto.DeltaStyle
                 };
 
-                await _instrumentRepo.UpsertAsync(instrument);
+                try
+                {
+                    await _instrumentRepo.UpsertAsync(instrument);
+                }
+                catch (Exception ex)
+                {
+                    // Still requested (35=V): its snapshots are kept this session, but it cannot be marked subscribed in the database.
+                    _logger.LogError(ex,
+                        "[{Session}] SecurityId={SecId} not stored in market_instruments — requested anyway, not marked subscribed in the database",
+                        sessionKey, dto.SecurityId);
+                }
                 matchedIds.Add(dto.SecurityId);
 
                 _logger.LogInformation(

@@ -9,13 +9,15 @@ namespace FxFixGateway.Domain.Interfaces
     public interface IMarketInstrumentRepository
     {
         /// <summary>Upsert: uppdatera om SecurityId redan finns, annars insert.</summary>
+        /// A database error is thrown (the caller logs it).
         Task UpsertAsync(MarketInstrument instrument);
 
         /// <summary>Hämta instrument matchande givet filter (valutapar + produkttyp).</summary>
         Task<IReadOnlyList<MarketInstrument>> GetByFilterAsync(string sessionKey, string currencyPair, int product);
 
         /// <summary>Markera instrument som prenumererade (is_subscribed = true).</summary>
-        Task MarkAsSubscribedAsync(string sessionKey, IEnumerable<string> securityIds);
+        /// Returns how many of them were found in market_instruments; a database error is thrown (the caller logs it).
+        Task<int> MarkAsSubscribedAsync(string sessionKey, IEnumerable<string> securityIds);
 
         /// <summary>Hämta ett specifikt instrument via SecurityID — används för meta-lookup i MarketDataService.</summary>
         Task<MarketInstrument?> GetBySecurityIdAsync(string sessionKey, string securityId);

@@ -20,6 +20,7 @@ namespace FxFixGateway.Application.Services
         private readonly IMarketDataSubscriber _subscriber;
         private readonly IMarketInstrumentRepository _instrumentRepo;
         private readonly IMarketSubscriptionRepository _subscriptionRepo;
+        private readonly IMarketDataService? _marketData;
         private readonly ILogger<MarketDataOrchestrator> _logger;
 
         private static readonly HashSet<string> MarketDataSessions = new(StringComparer.OrdinalIgnoreCase)
@@ -31,8 +32,10 @@ namespace FxFixGateway.Application.Services
             IMarketDataSubscriber subscriber,
             IMarketInstrumentRepository instrumentRepo,
             IMarketSubscriptionRepository subscriptionRepo,
-            ILogger<MarketDataOrchestrator> logger)
+            ILogger<MarketDataOrchestrator> logger,
+            IMarketDataService? marketData = null)
         {
+            _marketData = marketData;
             _subscriber = subscriber ?? throw new ArgumentNullException(nameof(subscriber));
             _instrumentRepo = instrumentRepo ?? throw new ArgumentNullException(nameof(instrumentRepo));
             _subscriptionRepo = subscriptionRepo ?? throw new ArgumentNullException(nameof(subscriptionRepo));
@@ -83,7 +86,22 @@ namespace FxFixGateway.Application.Services
                 "[{Session}] SecurityList ready — {Count} instrument(s) — sending MarketDataRequest (35=V)",
                 sessionKey, securityIds.Count);
 
-            await _instrumentRepo.MarkAsSubscribedAsync(sessionKey, securityIds);
+            try
+            {
+                var marked = await _instrumentRepo.MarkAsSubscribedAsync(sessionKey, securityIds);
+                if (marked < securityIds.Count)
+                    _logger.LogWarning(
+                        "[{Session}] {Marked} of {Count} instrument(s) marked subscribed in the database: the others are not in market_instruments",
+                        sessionKey, marked, securityIds.Count);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex,
+                    "[{Session}] {Count} instrument(s) not marked subscribed in the database — their snapshots are kept for this session; marked again at the next logon",
+                    sessionKey, securityIds.Count);
+            }
+            // Their snapshots are kept from now on whatever the database says (the market data service caches its answer).
+            foreach (var id in securityIds) _marketData?.MarkSubscribed(sessionKey, id);
             _subscriber.SendMarketDataRequest(sessionKey, securityIds);
         }
     }

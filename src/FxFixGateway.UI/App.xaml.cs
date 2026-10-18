@@ -251,7 +251,8 @@ namespace FxFixGateway.UI
                 var instrRepo = sp.GetRequiredService<IMarketInstrumentRepository>();
                 var subRepo = sp.GetRequiredService<IMarketSubscriptionRepository>();
                 var logger = sp.GetRequiredService<ILogger<MarketDataOrchestrator>>();
-                return new MarketDataOrchestrator(subscriber, instrRepo, subRepo, logger);
+                // The market data service's subscription cache: the requested instruments' snapshots are kept from the request on.
+                return new MarketDataOrchestrator(subscriber, instrRepo, subRepo, logger, sp.GetRequiredService<IMarketDataService>());
             });
 
             services.AddSingleton<ISecurityListService>(sp =>

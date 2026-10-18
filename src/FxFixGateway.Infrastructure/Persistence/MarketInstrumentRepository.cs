@@ -50,42 +50,30 @@ namespace FxFixGateway.Infrastructure.Persistence
                     amount_ccy   = VALUES(amount_ccy),
                     updated_utc  = CURRENT_TIMESTAMP(3);";
 
-            try
-            {
-                await using var connection = new MySqlConnection(_connectionString);
-                await connection.OpenAsync();
+            // No catch: a database error is thrown to the caller, which logs it (it was only a Debug line).
+            await using var connection = new MySqlConnection(_connectionString);
+            await connection.OpenAsync();
 
-                await using var command = new MySqlCommand(sql, connection);
-                command.Parameters.AddWithValue("@SessionKey",   instrument.SessionKey);
-                command.Parameters.AddWithValue("@SecurityId",   instrument.SecurityId);
-                command.Parameters.AddWithValue("@Symbol",       (object?)instrument.Symbol       ?? DBNull.Value);
-                command.Parameters.AddWithValue("@CurrencyPair", (object?)instrument.CurrencyPair ?? DBNull.Value);
-                command.Parameters.AddWithValue("@Product",      (object?)instrument.Product      ?? DBNull.Value);
-                command.Parameters.AddWithValue("@SecurityReqId",(object?)instrument.SecurityReqId?? DBNull.Value);
-                command.Parameters.AddWithValue("@Tenor",        (object?)instrument.Tenor        ?? DBNull.Value);
-                command.Parameters.AddWithValue("@ExpiryDate",   (object?)instrument.ExpiryDate   ?? DBNull.Value);
-                command.Parameters.AddWithValue("@Cut",          (object?)instrument.Cut          ?? DBNull.Value);
-                command.Parameters.AddWithValue("@Strategy",     (object?)instrument.Strategy     ?? DBNull.Value);
-                command.Parameters.AddWithValue("@Delta",        (object?)instrument.Delta        ?? DBNull.Value);
-                command.Parameters.AddWithValue("@Strike",       (object?)instrument.Strike       ?? DBNull.Value);
-                command.Parameters.AddWithValue("@QuoteStyle",   (object?)instrument.QuoteStyle   ?? DBNull.Value);
-                command.Parameters.AddWithValue("@DeltaStyle",   (object?)instrument.DeltaStyle   ?? DBNull.Value);
-                command.Parameters.AddWithValue("@PremiumCcy",   (object?)instrument.PremiumCcy   ?? DBNull.Value);
-                command.Parameters.AddWithValue("@AmountCcy",    (object?)instrument.AmountCcy    ?? DBNull.Value);
-                command.Parameters.AddWithValue("@DiscoveredUtc", instrument.DiscoveredUtc);
+            await using var command = new MySqlCommand(sql, connection);
+            command.Parameters.AddWithValue("@SessionKey",   instrument.SessionKey);
+            command.Parameters.AddWithValue("@SecurityId",   instrument.SecurityId);
+            command.Parameters.AddWithValue("@Symbol",       (object?)instrument.Symbol       ?? DBNull.Value);
+            command.Parameters.AddWithValue("@CurrencyPair", (object?)instrument.CurrencyPair ?? DBNull.Value);
+            command.Parameters.AddWithValue("@Product",      (object?)instrument.Product      ?? DBNull.Value);
+            command.Parameters.AddWithValue("@SecurityReqId",(object?)instrument.SecurityReqId?? DBNull.Value);
+            command.Parameters.AddWithValue("@Tenor",        (object?)instrument.Tenor        ?? DBNull.Value);
+            command.Parameters.AddWithValue("@ExpiryDate",   (object?)instrument.ExpiryDate   ?? DBNull.Value);
+            command.Parameters.AddWithValue("@Cut",          (object?)instrument.Cut          ?? DBNull.Value);
+            command.Parameters.AddWithValue("@Strategy",     (object?)instrument.Strategy     ?? DBNull.Value);
+            command.Parameters.AddWithValue("@Delta",        (object?)instrument.Delta        ?? DBNull.Value);
+            command.Parameters.AddWithValue("@Strike",       (object?)instrument.Strike       ?? DBNull.Value);
+            command.Parameters.AddWithValue("@QuoteStyle",   (object?)instrument.QuoteStyle   ?? DBNull.Value);
+            command.Parameters.AddWithValue("@DeltaStyle",   (object?)instrument.DeltaStyle   ?? DBNull.Value);
+            command.Parameters.AddWithValue("@PremiumCcy",   (object?)instrument.PremiumCcy   ?? DBNull.Value);
+            command.Parameters.AddWithValue("@AmountCcy",    (object?)instrument.AmountCcy    ?? DBNull.Value);
+            command.Parameters.AddWithValue("@DiscoveredUtc", instrument.DiscoveredUtc);
 
-                await command.ExecuteNonQueryAsync();
-            }
-            catch (MySqlException ex)
-            {
-                System.Diagnostics.Debug.WriteLine(
-                    $"[MarketInstrumentRepository] UpsertAsync MySqlException {ex.Number}: {ex.Message}");
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine(
-                    $"[MarketInstrumentRepository] UpsertAsync error: {ex.Message}");
-            }
+            await command.ExecuteNonQueryAsync();
         }
 
         public async Task<IReadOnlyList<MarketInstrument>> GetByFilterAsync(
@@ -131,10 +119,10 @@ namespace FxFixGateway.Infrastructure.Persistence
             return result;
         }
 
-        public async Task MarkAsSubscribedAsync(string sessionKey, IEnumerable<string> securityIds)
+        public async Task<int> MarkAsSubscribedAsync(string sessionKey, IEnumerable<string> securityIds)
         {
             var ids = securityIds.ToList();
-            if (ids.Count == 0) return;
+            if (ids.Count == 0) return 0;
 
             var paramNames = ids.Select((_, i) => $"@Id{i}").ToList();
             var sql = $@"
@@ -143,28 +131,17 @@ namespace FxFixGateway.Infrastructure.Persistence
                 WHERE  session_key   = @SessionKey
                   AND  security_id   IN ({string.Join(",", paramNames)});";
 
-            try
-            {
-                await using var connection = new MySqlConnection(_connectionString);
-                await connection.OpenAsync();
+            // No catch: a database error is thrown to the caller, which logs it (it was only a Debug line).
+            await using var connection = new MySqlConnection(_connectionString);
+            await connection.OpenAsync();
 
-                await using var command = new MySqlCommand(sql, connection);
-                command.Parameters.AddWithValue("@SessionKey", sessionKey);
-                for (int i = 0; i < ids.Count; i++)
-                    command.Parameters.AddWithValue(paramNames[i], ids[i]);
+            await using var command = new MySqlCommand(sql, connection);
+            command.Parameters.AddWithValue("@SessionKey", sessionKey);
+            for (int i = 0; i < ids.Count; i++)
+                command.Parameters.AddWithValue(paramNames[i], ids[i]);
 
-                await command.ExecuteNonQueryAsync();
-            }
-            catch (MySqlException ex)
-            {
-                System.Diagnostics.Debug.WriteLine(
-                    $"[MarketInstrumentRepository] MarkAsSubscribedAsync MySqlException {ex.Number}: {ex.Message}");
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine(
-                    $"[MarketInstrumentRepository] MarkAsSubscribedAsync Unexpected error: {ex.Message}");
-            }
+            // Rows found (MySql.Data counts matched rows, also those already subscribed).
+            return await command.ExecuteNonQueryAsync();
         }
 
         public async Task<MarketInstrument?> GetBySecurityIdAsync(string sessionKey, string securityId)
