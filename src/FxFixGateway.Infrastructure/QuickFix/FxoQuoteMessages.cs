@@ -35,7 +35,8 @@ namespace FxFixGateway.Infrastructure.QuickFix
             Set(m, 55, p.Symbol);
             Set(m, 167, p.SecurityType);
             Set(m, 9126, p.OptionStrategy);
-            m.SetField(new QF.Fields.StringField(62, Utc(p.ValidUntilUtc)));
+            // GTC (no time stipulation): no ValidUntilTime, optional in the specification; the quote stays until we cancel it.
+            if (p.ValidUntilUtc.HasValue) m.SetField(new QF.Fields.StringField(62, Utc(p.ValidUntilUtc.Value)));
             m.SetField(new QF.Fields.StringField(60, Utc(nowUtc)));
             Set(m, 5475, p.PremiumDel);
             m.SetField(new QF.Fields.StringField(9536, TraderId(p.Trader)));

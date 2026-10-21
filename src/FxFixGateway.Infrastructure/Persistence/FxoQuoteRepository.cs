@@ -44,7 +44,7 @@ namespace FxFixGateway.Infrastructure.Persistence
                        r.exec_delta_hedge, r.hedge_trade_type
                 FROM fxvol.fxohub_rfq_price p
                 INNER JOIN fxvol.fxohub_rfq r ON r.id = p.rfq_id
-                WHERE p.status = 'QUEUED' AND p.valid_until_utc > @Now
+                WHERE p.status = 'QUEUED' AND (p.valid_until_utc IS NULL OR p.valid_until_utc > @Now)
                 ORDER BY p.created_utc, p.id;";
             const string legSql = @"
                 SELECT pl.price_id, pl.leg_no, pl.bid_vol, pl.offer_vol, pl.strike, pl.delta_pct,
@@ -53,7 +53,7 @@ namespace FxFixGateway.Infrastructure.Persistence
                 FROM fxvol.fxohub_rfq_price_leg pl
                 INNER JOIN fxvol.fxohub_rfq_price p ON p.id = pl.price_id
                 INNER JOIN fxvol.fxohub_rfq_leg l ON l.rfq_id = p.rfq_id AND l.leg_no = pl.leg_no
-                WHERE p.status = 'QUEUED' AND p.valid_until_utc > @Now
+                WHERE p.status = 'QUEUED' AND (p.valid_until_utc IS NULL OR p.valid_until_utc > @Now)
                 ORDER BY pl.price_id, pl.leg_no;";
 
             var rows = new List<(FxoPriceToSend Price, List<FxoPriceLegToSend> Legs)>();
@@ -74,7 +74,9 @@ namespace FxFixGateway.Infrastructure.Persistence
                         RfqId = r.GetInt64(r.GetOrdinal("rfq_id")),
                         Version = r.GetInt32(r.GetOrdinal("version")),
                         Trader = r.GetString(r.GetOrdinal("trader")),
-                        ValidUntilUtc = DateTime.SpecifyKind(r.GetDateTime(r.GetOrdinal("valid_until_utc")), DateTimeKind.Utc),
+                        // Null = good till cancelled (GTC): no ValidUntilTime is sent.
+                        ValidUntilUtc = r.IsDBNull(r.GetOrdinal("valid_until_utc")) ? (DateTime?)null
+                                      : DateTime.SpecifyKind(r.GetDateTime(r.GetOrdinal("valid_until_utc")), DateTimeKind.Utc),
                         SpotRef = r.GetDecimal(r.GetOrdinal("spot_ref")),
                         SessionKey = r.GetString(r.GetOrdinal("session_key")),
                         QuoteReqId = r.GetString(r.GetOrdinal("quote_req_id")),
