@@ -54,7 +54,8 @@ namespace FxFixGateway.Infrastructure.Persistence
                 ORDER BY p.created_utc, p.id;";
             const string legSql = @"
                 SELECT pl.price_id, pl.leg_no, pl.bid_vol, pl.offer_vol, pl.strike, pl.delta_pct,
-                       l.leg_symbol, l.leg_id, l.leg_qty_millions, l.maturity_date, l.strike_price, l.leg_side, l.leg_type,
+                       l.leg_symbol, l.leg_id, COALESCE(pl.qty_millions, l.leg_qty_millions) AS leg_qty_millions,
+                       l.maturity_date, l.strike_price, l.leg_side, l.leg_type,
                        l.tenor_code, l.leg_currency, l.cutoff, l.settl_date, l.call_put_currency
                 FROM fxvol.fxohub_rfq_price_leg pl
                 INNER JOIN fxvol.fxohub_rfq_price p ON p.id = pl.price_id

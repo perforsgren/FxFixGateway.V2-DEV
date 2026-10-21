@@ -97,7 +97,7 @@ namespace FxFixGateway.Application.BackgroundServices
                 return;
             }
             await _repository.MarkSentAsync(price.PriceId, quoteId, now);
-            var legs = string.Join(", ", price.Legs.OrderBy(l => l.LegNo).Select(l => $"{l.LegId} {l.BidVol}/{l.OfferVol}"));
+            var legs = string.Join(", ", price.Legs.OrderBy(l => l.LegNo).Select(l => $"{l.LegId} {l.QtyMillions:0.######}m {l.BidVol}/{l.OfferVol}"));
             await TryEventAsync(price.SessionKey, price.QuoteReqId, "S", "QUOTE_SENT",
                                 $"v{price.Version} QuoteID={quoteId} by {price.Trader}" + (price.TraderName != null ? $" as {price.TraderName}" : "") + $" · {legs} · our spot {price.SpotRef} (not sent) · " + (price.ValidUntilUtc.HasValue ? $"ours until {price.ValidUntilUtc.Value:HH:mm:ss.fff}Z (62 not sent)" : "GTC"), raw);
             _logger.LogInformation("[{Session}] FXOhub Quote sent: {QuoteReqId} v{Version} QuoteID={QuoteId} {Legs}",

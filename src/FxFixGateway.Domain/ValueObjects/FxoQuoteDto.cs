@@ -32,7 +32,7 @@ namespace FxFixGateway.Domain.ValueObjects
         public int LegNo { get; init; }
         public string? LegSymbol { get; init; }          // 600
         public string? LegId { get; init; }              // 7940
-        public decimal? QtyMillions { get; init; }       // 687
+        public decimal? QtyMillions { get; init; }       // 687: our size on the leg (fxohub_rfq_price_leg.qty_millions), else the request's
         public DateTime? MaturityDate { get; init; }     // 611
         public decimal? RequestStrike { get; init; }     // 612 (strike-specific requests)
         public string? LegSide { get; init; }            // 624
