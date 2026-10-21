@@ -28,6 +28,7 @@ namespace FxFixGateway.Infrastructure.QuickFix
         private readonly IQuoteRequestService?         _quoteRequestService;
         private readonly IFxoRfqService?               _fxoRfqService;
         private readonly IFxoQuoteService?             _fxoQuoteService;
+        private readonly IVolbrokerQuoteService?       _volbrokerQuoteService;
         private readonly ISessionHeartbeatNotifier?    _heartbeatNotifier;
         private readonly IPushNotificationService?     _pushNotification;
 
@@ -59,7 +60,8 @@ namespace FxFixGateway.Infrastructure.QuickFix
             ISessionHeartbeatNotifier? heartbeatNotifier   = null,
             IPushNotificationService? pushNotification      = null,
             IFxoRfqService? fxoRfqService                  = null,
-            IFxoQuoteService? fxoQuoteService              = null)
+            IFxoQuoteService? fxoQuoteService              = null,
+            IVolbrokerQuoteService? volbrokerQuoteService  = null)
         {
             _sessionKeyMap      = sessionKeyMap ?? throw new ArgumentNullException(nameof(sessionKeyMap));
             _sessionCredentials = sessionCredentials ?? new Dictionary<string, (string, string)>();
@@ -77,6 +79,7 @@ namespace FxFixGateway.Infrastructure.QuickFix
             _pushNotification    = pushNotification;
             _fxoRfqService       = fxoRfqService;
             _fxoQuoteService     = fxoQuoteService;
+            _volbrokerQuoteService = volbrokerQuoteService;
         }
 
         /// <summary>
@@ -377,6 +380,32 @@ namespace FxFixGateway.Infrastructure.QuickFix
                     });
                     break;
 
+                // Volbroker's answers to our quotes, on the sessions our Volbroker quotes go out on: Quote Response (our price
+                // entered, refused, removed or hit), Quote Status Report (our Quote Cancel's answer), Business Message Reject.
+                case "AJ" when _volbrokerQuoteService != null && _volbrokerQuoteService.HandlesSession(sessionKey):
+                    HandleVolbrokerQuote(sessionKey, msgType, () =>
+                    {
+                        var dto = VolbrokerQuoteMessages.ParseQuoteResponse(message, rawMessage);
+                        return () => _volbrokerQuoteService.HandleQuoteResponseAsync(sessionKey, dto);
+                    });
+                    break;
+
+                case "AI" when _volbrokerQuoteService != null && _volbrokerQuoteService.HandlesSession(sessionKey):
+                    HandleVolbrokerQuote(sessionKey, msgType, () =>
+                    {
+                        var dto = FxoQuoteMessages.ParseQuoteStatusReport(message, rawMessage);
+                        return () => _volbrokerQuoteService.HandleQuoteStatusReportAsync(sessionKey, dto);
+                    });
+                    break;
+
+                case "j" when _volbrokerQuoteService != null && _volbrokerQuoteService.HandlesSession(sessionKey) && FxoQuoteMessages.IsQuoteReject(message):
+                    HandleVolbrokerQuote(sessionKey, msgType, () =>
+                    {
+                        var dto = FxoQuoteMessages.ParseBusinessReject(message, rawMessage);
+                        return () => _volbrokerQuoteService.HandleBusinessRejectAsync(sessionKey, dto);
+                    });
+                    break;
+
                 // Quote Status Report: FXOhub's answer to our Quote or Quote Cancel.
                 case "AI":
                     HandleFxoQuote(sessionKey, msgType, () =>
@@ -490,6 +519,38 @@ namespace FxFixGateway.Infrastructure.QuickFix
                 {
                     ErrorOccurred?.Invoke(this, new ErrorOccurredEvent(
                         sessionKey, $"FXOhub quote message 35={msgType} could not be handled: {ex.Message}", ex));
+                }
+            });
+        }
+
+        /// <summary>
+        /// As <see cref="HandleFxoQuote"/>, for Volbroker's answers to our quotes: parsed here, handled on a background task, a
+        /// message that cannot be parsed or handled reported.
+        /// </summary>
+        private void HandleVolbrokerQuote(string sessionKey, string msgType, Func<Func<Task>> parse)
+        {
+            Func<Task> handle;
+            try
+            {
+                handle = parse();
+            }
+            catch (Exception ex)
+            {
+                ErrorOccurred?.Invoke(this, new ErrorOccurredEvent(
+                    sessionKey, $"Volbroker quote message 35={msgType} could not be parsed: {ex.Message}", ex));
+                return;
+            }
+
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    await handle();
+                }
+                catch (Exception ex)
+                {
+                    ErrorOccurred?.Invoke(this, new ErrorOccurredEvent(
+                        sessionKey, $"Volbroker quote message 35={msgType} could not be handled: {ex.Message}", ex));
                 }
             });
         }

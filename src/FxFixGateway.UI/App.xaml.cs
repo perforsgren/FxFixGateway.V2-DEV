@@ -284,6 +284,7 @@ namespace FxFixGateway.UI
                 var pushNotification = sp.GetRequiredService<IPushNotificationService>(); // ← lägg till
                 var fxoRfqService = sp.GetRequiredService<IFxoRfqService>();
                 var fxoQuoteService = sp.GetRequiredService<IFxoQuoteService>();
+                var volbrokerQuoteService = sp.GetRequiredService<IVolbrokerQuoteService>();
 
                 return new QuickFixEngine(
                     logger,
@@ -298,7 +299,8 @@ namespace FxFixGateway.UI
                     heartbeatNotifier,
                     pushNotification, // ← lägg till
                     fxoRfqService,
-                    fxoQuoteService);
+                    fxoQuoteService,
+                    volbrokerQuoteService);
             });
 
             // Application Services
@@ -427,6 +429,19 @@ namespace FxFixGateway.UI
                     sp.GetRequiredService<ILogger<FxoQuoteService>>()));
             services.AddSingleton<IFxoQuoteService>(sp => sp.GetRequiredService<FxoQuoteService>());
             services.AddHostedService(sp => sp.GetRequiredService<FxoQuoteService>());
+
+            // Volbroker quoting: the pricer's prices on Volbroker RFQs (volbroker_rfq_price) as Quote / Quote Cancel on the sessions
+            // the service handles (VOLB_FIXHUB_DEV, Volbroker's SUP environment), and the answers (35=AJ / AI / j).
+            services.AddSingleton<IVolbrokerQuoteRepository>(sp => new VolbrokerQuoteRepository(fxvolConnectionString));
+            services.AddSingleton<IVolbrokerQuoteSender>(sp =>
+                new VolbrokerQuoteSender(key => (sp.GetRequiredService<IFixEngine>() as QuickFixEngine)?.GetSessionId(key)));
+            services.AddSingleton<VolbrokerQuoteService>(sp =>
+                new VolbrokerQuoteService(
+                    sp.GetRequiredService<IVolbrokerQuoteRepository>(),
+                    sp.GetRequiredService<IVolbrokerQuoteSender>(),
+                    sp.GetRequiredService<ILogger<VolbrokerQuoteService>>()));
+            services.AddSingleton<IVolbrokerQuoteService>(sp => sp.GetRequiredService<VolbrokerQuoteService>());
+            services.AddHostedService(sp => sp.GetRequiredService<VolbrokerQuoteService>());
 
             services.AddSingleton<IPushNotificationService, PushoverNotificationService>();
             services.AddHostedService<FixEngineHostedService>();

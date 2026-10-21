@@ -305,7 +305,7 @@
       <component name="Parties" required="N" />
       <field name="TradingSessionID" required="N" />
       <field name="TradingSessionSubID" required="N" />
-      <component name="Instrument" required="Y" />
+      <component name="Instrument" required="N" />
       <component name="FinancingDetails" required="N" />
       <group name="NoUnderlyings" required="N">
         <component name="UnderlyingInstrument" required="N" />
@@ -571,7 +571,7 @@
       <component name="Parties" required="N" />
       <field name="TradingSessionID" required="N" />
       <field name="TradingSessionSubID" required="N" />
-      <component name="Instrument" required="Y" />
+      <component name="Instrument" required="N" />
       <component name="FinancingDetails" required="N" />
       <group name="NoUnderlyings" required="N">
         <component name="UnderlyingInstrument" required="N" />

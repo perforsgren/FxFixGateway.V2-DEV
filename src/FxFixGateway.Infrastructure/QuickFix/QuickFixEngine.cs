@@ -28,6 +28,7 @@ namespace FxFixGateway.Infrastructure.QuickFix
         private readonly IPushNotificationService?         _pushNotification;
         private readonly IFxoRfqService?                 _fxoRfqService;
         private readonly IFxoQuoteService?               _fxoQuoteService;
+        private readonly IVolbrokerQuoteService?         _volbrokerQuoteService;
 
         private readonly Dictionary<string, SSLTunnelProxy> _sslTunnels = new();
 
@@ -60,7 +61,8 @@ namespace FxFixGateway.Infrastructure.QuickFix
             ISessionHeartbeatNotifier? heartbeatNotifier       = null,
             IPushNotificationService? pushNotification         = null,
             IFxoRfqService? fxoRfqService                      = null,
-            IFxoQuoteService? fxoQuoteService                  = null)
+            IFxoQuoteService? fxoQuoteService                  = null,
+            IVolbrokerQuoteService? volbrokerQuoteService      = null)
         {
             _logger              = logger;
             _dataDictionaryPath  = dataDictionaryPath ?? GetDefaultDataDictionaryPath();
@@ -75,6 +77,7 @@ namespace FxFixGateway.Infrastructure.QuickFix
             _pushNotification    = pushNotification;
             _fxoRfqService       = fxoRfqService;
             _fxoQuoteService     = fxoQuoteService;
+            _volbrokerQuoteService = volbrokerQuoteService;
         }
 
         /// <summary>The QuickFIX session for <paramref name="sessionKey"/>, or null before initialisation or for an unknown key.</summary>
@@ -229,7 +232,8 @@ namespace FxFixGateway.Infrastructure.QuickFix
                 _heartbeatNotifier,
                 _pushNotification,       // OnLogout's disconnect notice (was not passed before)
                 _fxoRfqService,
-                _fxoQuoteService);
+                _fxoQuoteService,
+                _volbrokerQuoteService);
             _application.StatusChanged += OnStatusChanged;
             _application.MessageReceived += OnMessageReceived;
             _application.MessageSent += OnMessageSent;
