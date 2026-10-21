@@ -60,7 +60,7 @@ namespace FxFixGateway.Application.Services
 
         private static readonly HashSet<string> MarketDataSessions = new(StringComparer.OrdinalIgnoreCase)
         {
-            //"VOLB_FIXHUB_DEV",
+            // Not VOLB_FIXHUB_DEV: it only takes requests (QuoteRequestService.RfqOnlySessions), its snapshots are not kept.
             "VOLB_FIXHUB_PROD",
             "FXOHUB_UAT"
         };
