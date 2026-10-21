@@ -366,7 +366,7 @@
       <field name="QuoteReqID" required="Y" />
       <field name="RFQReqID" required="N" />
       <field name="QuoteRequestRejectReason" required="Y" />
-      <group name="NoRelatedSym" required="Y">
+      <group name="NoRelatedSym" required="N">
         <component name="Instrument" required="Y" />
         <component name="FinancingDetails" required="N" />
         <group name="NoUnderlyings" required="N">
@@ -557,13 +557,13 @@
     <message name="QuoteStatusReport" msgtype="AI" msgcat="app">
       <field name="QuoteStatusReqID" required="N" />
       <field name="QuoteReqID" required="N" />
-      <field name="QuoteID" required="Y" />
+      <field name="QuoteID" required="N" />
       <field name="QuoteRespID" required="N" />
       <field name="QuoteType" required="N" />
       <component name="Parties" required="N" />
       <field name="TradingSessionID" required="N" />
       <field name="TradingSessionSubID" required="N" />
-      <component name="Instrument" required="Y" />
+      <component name="Instrument" required="N" />
       <component name="FinancingDetails" required="N" />
       <group name="NoUnderlyings" required="N">
         <component name="UnderlyingInstrument" required="N" />
