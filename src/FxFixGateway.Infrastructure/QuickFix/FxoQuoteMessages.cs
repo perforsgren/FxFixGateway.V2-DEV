@@ -7,9 +7,11 @@ namespace FxFixGateway.Infrastructure.QuickFix
     /// <summary>
     /// Builds our FXOhub Quote (35=S) and Quote Cancel (35=Z), and parses the Quote Status Report (35=AI) and Business
     /// Message Reject (35=j), per the FXOhub FIX specification (RFQ section). The Quote repeats the request's legs (LegID,
-    /// LegSide, LegType as in the QuoteRequest) with our leg vols (LegBidVolatility 5678 / LegOfferVolatility 9159), the
-    /// strike (6354), the delta (9075) and the spot reference (LegSpotRate 5235); FXOhub derives the strategy vol and the
-    /// prices from the leg vols. The legs are a real repeating group (NoLegs 555, delimiter LegSymbol 600) in the
+    /// LegSide, LegType as in the QuoteRequest) with our leg vols (LegBidVolatility 5678 / LegOfferVolatility 9159) only,
+    /// as voice quoting: FXOhub sets the spot reference itself and derives the strategy vol, the strike of a delta or ATM leg,
+    /// the premium and the hedge from it and the leg vols. The pricer's strike, delta and spot ref (stored with the price,
+    /// fxohub_rfq_price / _leg) are not sent: LegSpotRate (5235), LegDelta (9075) and Strike (6354) are optional in the
+    /// specification. The legs are a real repeating group (NoLegs 555, delimiter LegSymbol 600) in the
     /// specification's order, so the message is built as a QuickFIX message, not a raw string.
     /// </summary>
     public static class FxoQuoteMessages
@@ -18,7 +20,7 @@ namespace FxFixGateway.Infrastructure.QuickFix
 
         /// <summary>The Quote's leg fields in the specification's order (LegSymbol first: the group's delimiter).</summary>
         private static readonly int[] LegOrder =
-            { 600, 7940, 687, 611, 612, 624, 6713, 6215, 556, 5678, 5235, 5844, 9075, 6354, 9125, 588, 9034, 9159 };
+            { 600, 7940, 687, 611, 612, 624, 6713, 6215, 556, 5678, 9125, 588, 9034, 9159 };
 
         /// <summary>TraderID (9536): FXOhub truncates after 15 characters, so we send at most 15.</summary>
         public static string TraderId(string trader) => trader.Length > 15 ? trader.Substring(0, 15) : trader;
@@ -56,9 +58,6 @@ namespace FxFixGateway.Infrastructure.QuickFix
                 Set(g, 6215, l.TenorCode);
                 Set(g, 556, l.LegCurrency);
                 g.SetField(new QF.Fields.StringField(5678, l.BidVol.ToString("0.####", Inv)));
-                g.SetField(new QF.Fields.StringField(5235, p.SpotRef.ToString("0.########", Inv)));
-                g.SetField(new QF.Fields.StringField(9075, l.DeltaPct.ToString("0.####", Inv)));
-                g.SetField(new QF.Fields.StringField(6354, l.Strike.ToString("0.########", Inv)));
                 Set(g, 9125, l.Cutoff);
                 if (l.SettlDate.HasValue) g.SetField(new QF.Fields.StringField(588, l.SettlDate.Value.ToString("yyyyMMdd", Inv)));
                 Set(g, 9034, l.CallPutCurrency);
