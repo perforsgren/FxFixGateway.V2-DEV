@@ -11,7 +11,9 @@ namespace FxFixGateway.Infrastructure.QuickFix
     /// as voice quoting: FXOhub sets the spot reference itself and derives the strategy vol, the strike of a delta or ATM leg,
     /// the premium and the hedge from it and the leg vols. The pricer's strike, delta and spot ref (stored with the price,
     /// fxohub_rfq_price / _leg) are not sent: LegSpotRate (5235), LegDelta (9075) and Strike (6354) are optional in the
-    /// specification. The legs are a real repeating group (NoLegs 555, delimiter LegSymbol 600) in the
+    /// specification. No ValidUntilTime (62, optional) either: the time stipulation is ours (the gateway cancels the quote
+    /// at fxohub_rfq_price.valid_until_utc, FXOhub does not end it at 62), so the pricer can change it on a live price and
+    /// FXOhub never holds another time. The legs are a real repeating group (NoLegs 555, delimiter LegSymbol 600) in the
     /// specification's order, so the message is built as a QuickFIX message, not a raw string.
     /// </summary>
     public static class FxoQuoteMessages
@@ -35,8 +37,6 @@ namespace FxFixGateway.Infrastructure.QuickFix
             Set(m, 55, p.Symbol);
             Set(m, 167, p.SecurityType);
             Set(m, 9126, p.OptionStrategy);
-            // GTC (no time stipulation): no ValidUntilTime, optional in the specification; the quote stays until we cancel it.
-            if (p.ValidUntilUtc.HasValue) m.SetField(new QF.Fields.StringField(62, Utc(p.ValidUntilUtc.Value)));
             m.SetField(new QF.Fields.StringField(60, Utc(nowUtc)));
             Set(m, 5475, p.PremiumDel);
             m.SetField(new QF.Fields.StringField(9536, TraderId(p.Trader)));

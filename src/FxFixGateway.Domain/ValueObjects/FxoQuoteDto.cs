@@ -10,7 +10,7 @@ namespace FxFixGateway.Domain.ValueObjects
         public long RfqId { get; init; }
         public int Version { get; init; }
         public string Trader { get; init; } = string.Empty;   // TraderID (9536), first 15 characters
-        public DateTime? ValidUntilUtc { get; init; }          // ValidUntilTime (62); null = good till cancelled (GTC), 62 not sent
+        public DateTime? ValidUntilUtc { get; init; }          // our time stipulation (cancelled at it; 62 is not sent); null = GTC
         public decimal SpotRef { get; init; }                  // LegSpotRate (5235)
 
         public string SessionKey { get; init; } = string.Empty;

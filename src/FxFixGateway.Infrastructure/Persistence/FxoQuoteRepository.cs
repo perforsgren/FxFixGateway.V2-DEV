@@ -80,7 +80,7 @@ namespace FxFixGateway.Infrastructure.Persistence
                         RfqId = r.GetInt64(r.GetOrdinal("rfq_id")),
                         Version = r.GetInt32(r.GetOrdinal("version")),
                         Trader = r.GetString(r.GetOrdinal("trader")),
-                        // Null = good till cancelled (GTC): no ValidUntilTime is sent.
+                        // Our time stipulation (ExpireAsync cancels at it; no ValidUntilTime is sent); null = GTC.
                         ValidUntilUtc = r.IsDBNull(r.GetOrdinal("valid_until_utc")) ? (DateTime?)null
                                       : DateTime.SpecifyKind(r.GetDateTime(r.GetOrdinal("valid_until_utc")), DateTimeKind.Utc),
                         SpotRef = r.GetDecimal(r.GetOrdinal("spot_ref")),

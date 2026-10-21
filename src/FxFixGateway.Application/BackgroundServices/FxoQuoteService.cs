@@ -12,7 +12,8 @@ namespace FxFixGateway.Application.BackgroundServices
     /// REJECTED; queued versions → a Quote (35=S) on the request's session (only while it is logged on; QUEUED → SENDING
     /// → SENT); versions the pricer asked to withdraw → a Quote Cancel (35=Z). FXOhub's Quote Status Reports (35=AI) and
     /// Business Message Rejects (35=j) are applied as they come. Each message is written to fxohub_rfq_event.
-    /// The spot stipulation is not in the Quote (FXOhub has no field for it): the pricer withdraws when spot leaves it.
+    /// Neither stipulation is in the Quote: the time is cancelled here (no ValidUntilTime is sent, so the pricer can change it
+    /// on a live price) and the pricer withdraws when spot leaves the range (FXOhub has no field for it).
     /// </summary>
     public sealed class FxoQuoteService : BackgroundService, IFxoQuoteService
     {
@@ -98,7 +99,7 @@ namespace FxFixGateway.Application.BackgroundServices
             await _repository.MarkSentAsync(price.PriceId, quoteId, now);
             var legs = string.Join(", ", price.Legs.OrderBy(l => l.LegNo).Select(l => $"{l.LegId} {l.BidVol}/{l.OfferVol}"));
             await TryEventAsync(price.SessionKey, price.QuoteReqId, "S", "QUOTE_SENT",
-                                $"v{price.Version} QuoteID={quoteId} by {price.Trader} · {legs} · our spot {price.SpotRef} (not sent) · " + (price.ValidUntilUtc.HasValue ? $"valid until {price.ValidUntilUtc.Value:HH:mm:ss.fff}Z" : "GTC (no ValidUntilTime)"), raw);
+                                $"v{price.Version} QuoteID={quoteId} by {price.Trader} · {legs} · our spot {price.SpotRef} (not sent) · " + (price.ValidUntilUtc.HasValue ? $"ours until {price.ValidUntilUtc.Value:HH:mm:ss.fff}Z (62 not sent)" : "GTC"), raw);
             _logger.LogInformation("[{Session}] FXOhub Quote sent: {QuoteReqId} v{Version} QuoteID={QuoteId} {Legs}",
                 price.SessionKey, price.QuoteReqId, price.Version, quoteId, legs);
         }
