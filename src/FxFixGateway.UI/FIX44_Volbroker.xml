@@ -5031,7 +5031,9 @@
     <field number="266" name="AggregatedBook" type="BOOLEAN" />
     <field number="267" name="NoMDEntryTypes" type="NUMINGROUP" />
     <field number="268" name="NoMDEntries" type="NUMINGROUP" />
-    <field number="269" name="MDEntryType" type="CHAR">
+    <!-- STRING, not CHAR: Volbroker sends L1.0 / L1.1 / L2.0 / L2.1 (leg 1 or 2 bid / offer) on a spread interest quoted as
+         outright prices (FIX Hub API 3.5, 5.4.3). -->
+    <field number="269" name="MDEntryType" type="STRING">
       <value enum="0" description="BID" />
       <value enum="1" description="OFFER" />
       <value enum="2" description="TRADE" />
@@ -5045,6 +5047,10 @@
       <value enum="A" description="IMBALANCE" />
       <value enum="B" description="TRADE_VOLUME" />
       <value enum="C" description="OPEN_INTEREST" />
+      <value enum="L1.0" description="LEG1_BID" />
+      <value enum="L1.1" description="LEG1_OFFER" />
+      <value enum="L2.0" description="LEG2_BID" />
+      <value enum="L2.1" description="LEG2_OFFER" />
     </field>
     <field number="270" name="MDEntryPx" type="PRICE" />
     <field number="271" name="MDEntrySize" type="QTY" />
@@ -5160,6 +5166,8 @@
       <value enum="13" description="CROSS_MARKET_WARNING" />
       <value enum="14" description="CANCELED_DUE_TO_LOCK_MARKET" />
       <value enum="15" description="CANCELED_DUE_TO_CROSS_MARKET" />
+      <!-- Volbroker's Quote Status Report (FIX Hub API 3.11): 99 = internal error. -->
+      <value enum="99" description="INTERNAL_ERROR" />
     </field>
     <field number="298" name="QuoteCancelType" type="INT">
       <value enum="1" description="CANCEL_FOR_SYMBOL" />
@@ -5573,7 +5581,8 @@
       <value enum="I" description="DIRECTED_BROKER" />
     </field>
     <field number="448" name="PartyID" type="STRING" />
-    <field number="451" name="NetChgPrevDay" type="PRICEOFFSET" />
+    <!-- Volbroker: BuyingLegDirection (L1 / L2) on a spread interest quoted as outright prices (FIX Hub API 3.5), not a price offset. -->
+    <field number="451" name="NetChgPrevDay" type="STRING" />
     <field number="452" name="PartyRole" type="INT">
       <value enum="1" description="EXECUTING_FIRM" />
       <value enum="2" description="BROKER_OF_CREDIT" />
@@ -6231,6 +6240,16 @@
       <value enum="4" description="COVER" />
       <value enum="5" description="DONE_AWAY" />
       <value enum="6" description="PASS" />
+      <value enum="7" description="END_TRADE" />
+      <value enum="8" description="TIMED_OUT" />
+      <!-- Volbroker's QuoteResponse (FIX Hub API 3.10): 3 = expired or removed, 6 = refused, and the values below. -->
+      <value enum="10" description="ENTERED_OR_CANCELLED" />
+      <value enum="11" description="BID_FAILED" />
+      <value enum="12" description="OFFER_FAILED" />
+      <value enum="13" description="BID_AND_OFFER_FAILED" />
+      <value enum="14" description="NO_PRICE_IN_QUOTE" />
+      <value enum="15" description="NOT_AUTHORIZED" />
+      <value enum="99" description="INTERNAL_ERROR" />
     </field>
     <field number="695" name="QuoteQualifier" type="CHAR" />
     <field number="696" name="YieldRedemptionDate" type="LOCALMKTDATE" />
