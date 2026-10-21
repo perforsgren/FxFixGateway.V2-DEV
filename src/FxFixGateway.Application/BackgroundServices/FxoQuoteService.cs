@@ -7,7 +7,8 @@ namespace FxFixGateway.Application.BackgroundServices
 {
     /// <summary>
     /// Sends the pricer's prices on TP ICAP FXOhub RFQs (gateway step 4). Every 500 ms it reads fxvol.fxohub_rfq_price:
-    /// versions whose time stipulation has passed → EXPIRED; queued versions on a request no longer the trader's →
+    /// versions whose time stipulation has passed → EXPIRED when never sent, else withdrawn with a Quote Cancel (TIMEOUT:
+    /// FXOhub does not end a quote at its ValidUntilTime); queued versions on a request no longer the trader's →
     /// REJECTED; queued versions → a Quote (35=S) on the request's session (only while it is logged on; QUEUED → SENDING
     /// → SENT); versions the pricer asked to withdraw → a Quote Cancel (35=Z). FXOhub's Quote Status Reports (35=AI) and
     /// Business Message Rejects (35=j) are applied as they come. Each message is written to fxohub_rfq_event.
@@ -57,7 +58,7 @@ namespace FxFixGateway.Application.BackgroundServices
         {
             var now = DateTime.UtcNow;
             var expired = await _repository.ExpireAsync(now);
-            if (expired > 0) _logger.LogInformation("FXOhub quotes: {Count} version(s) expired (time stipulation passed)", expired);
+            if (expired > 0) _logger.LogInformation("FXOhub quotes: {Count} version(s) past their time stipulation (expired, or cancelled at FXOhub)", expired);
             var orphaned = await _repository.RejectOrphanedAsync(now);
             if (orphaned > 0) _logger.LogWarning("FXOhub quotes: {Count} queued version(s) not sent: the request is no longer the trader's", orphaned);
 

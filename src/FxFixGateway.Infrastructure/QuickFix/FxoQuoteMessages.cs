@@ -81,7 +81,9 @@ namespace FxFixGateway.Infrastructure.QuickFix
             m.SetField(new QF.Fields.StringField(298, "1"));
             m.SetField(new QF.Fields.StringField(9536, TraderId(c.Trader)));
             if (c.Reason != null && c.Reason.StartsWith("spot left", StringComparison.Ordinal))
-                m.SetField(new QF.Fields.StringField(10127, "2"));
+                m.SetField(new QF.Fields.StringField(10127, "2"));        // MARKET CONDITIONS
+            else if (c.Reason == FxoPriceToCancel.TimeRanOut)
+                m.SetField(new QF.Fields.StringField(10127, "1"));        // TIMEOUT
             var text = Ascii(c.Reason);
             if (!string.IsNullOrEmpty(text))
                 m.SetField(new QF.Fields.StringField(58, text.Length > 255 ? text.Substring(0, 255) : text));

@@ -276,14 +276,17 @@ Incoming RFQ-blotter. Egna tabeller enligt noteringen ovan: FXOhub har inget `se
 ### Våra priser (FxoQuoteService, var 500 ms)
 
 Pricern skriver en version (`QUEUED`) för en fråga dess trader har tagit (villkorat: bara `PICKED_UP` av traden).
-→ tidsstipulationen passerad: `EXPIRED`; frågan inte längre traderns: `REJECTED`
+→ tidsstipulationen passerad: aldrig skickad `EXPIRED`; skickad/accepterad `WITHDRAW` med orsak "time ran out" och Quote
+  Cancel 10127=1 (TIMEOUT), eftersom FXOhub inte avslutar ett pris vid ValidUntilTime (UAT 21 okt); frågan inte längre
+  traderns: `REJECTED`
 → sessionen inloggad: `QUEUED` → `SENDING` (villkorad UPDATE) → Quote 35=S (benen som grupp 555 i specens ordning,
   QuoteID `OS{id}-{version}`) → `SENT` + fxohub_rfq_event QUOTE_SENT; inte inloggad: ligger kvar `QUEUED`
 → pricern ber om `WITHDRAW` (ej skickad: `WITHDRAWN` direkt) → Quote Cancel 35=Z (298=1, 10127=2 när spot lämnat
   intervallet) → `cancel_sent_utc`
 
 35=AI (Quote Status Report, på QuoteID)
-→ 0: `ACCEPTED` (+ `ack_utc`; äldre levande versioner av frågan `REPLACED`), 3: `WITHDRAWN`, 5/9: `REJECTED`,
+→ 0: `ACCEPTED` (+ `ack_utc`; äldre levande versioner av frågan `REPLACED`), 3: `WITHDRAWN` (`EXPIRED` efter vår
+  timeout-cancel), 5/9: `REJECTED` (9 efter timeout-cancel: `EXPIRED`),
   7: `EXPIRED`, 10: ingen ändring → fxohub_rfq_event QUOTE_STATUS
 
 35=j med 372 = S/Z (Business Message Reject) → versionen med QuoteID 379 `REJECTED` → BUSINESS_REJECT

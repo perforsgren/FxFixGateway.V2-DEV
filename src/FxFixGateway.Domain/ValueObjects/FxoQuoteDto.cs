@@ -50,6 +50,9 @@ namespace FxFixGateway.Domain.ValueObjects
     /// <summary>A sent price the pricer asked to withdraw (status WITHDRAW): the Quote Cancel (35=Z) to send.</summary>
     public sealed class FxoPriceToCancel
     {
+        /// <summary>The withdraw reason when the time stipulation ran out: sent with QuoteCancelReason 1 (TIMEOUT).</summary>
+        public const string TimeRanOut = "time ran out";
+
         public long PriceId { get; init; }
         public string SessionKey { get; init; } = string.Empty;
         public string QuoteReqId { get; init; } = string.Empty;

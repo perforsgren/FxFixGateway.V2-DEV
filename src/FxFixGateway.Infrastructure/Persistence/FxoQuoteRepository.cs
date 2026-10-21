@@ -21,11 +21,17 @@ namespace FxFixGateway.Infrastructure.Persistence
             _connectionString = connectionString;
         }
 
+        // The time stipulation ran out. A version never sent is expired here. One FXOhub has (sent or accepted) is withdrawn
+        // with a Quote Cancel (QuoteCancelReason 1, TIMEOUT): FXOhub does not end a quote at its ValidUntilTime (UAT 21 Oct: no
+        // Quote Status Report 7 came), so without the cancel it stayed in the market. Its AI then makes it EXPIRED.
         public Task<int> ExpireAsync(DateTime nowUtc)
             => ExecuteAsync(@"
                 UPDATE fxvol.fxohub_rfq_price
                 SET status = 'EXPIRED', status_reason = 'its time ran out', status_utc = @Now, closed_utc = @Now
-                WHERE status IN ('QUEUED', 'SENDING', 'SENT', 'ACCEPTED') AND valid_until_utc <= @Now;", nowUtc);
+                WHERE status = 'QUEUED' AND valid_until_utc <= @Now;
+                UPDATE fxvol.fxohub_rfq_price
+                SET status = 'WITHDRAW', withdraw_reason = '" + FxoPriceToCancel.TimeRanOut + @"', status_utc = @Now
+                WHERE status IN ('SENDING', 'SENT', 'ACCEPTED') AND quote_id IS NOT NULL AND valid_until_utc <= @Now;", nowUtc);
 
         public Task<int> RejectOrphanedAsync(DateTime nowUtc)
             => ExecuteAsync(@"
@@ -205,10 +211,15 @@ namespace FxFixGateway.Infrastructure.Persistence
                          UPDATE fxvol.fxohub_rfq_price SET status = 'REPLACED', status_reason = CONCAT('replaced by v', @Version),
                                 status_utc = @Now, closed_utc = @Now
                          WHERE rfq_id = @RfqId AND version < @Version AND status IN ('SENDING', 'SENT', 'ACCEPTED', 'WITHDRAW');",
-                "3" => @"UPDATE fxvol.fxohub_rfq_price SET status = 'WITHDRAWN', status_reason = COALESCE(@Text, status_reason),
+                // Cancelled: withdrawn, or expired when we cancelled it because its time ran out.
+                "3" => @"UPDATE fxvol.fxohub_rfq_price
+                         SET status = IF(withdraw_reason = '" + FxoPriceToCancel.TimeRanOut + @"', 'EXPIRED', 'WITHDRAWN'),
+                             status_reason = COALESCE(@Text, IF(withdraw_reason = '" + FxoPriceToCancel.TimeRanOut + @"', 'its time ran out', status_reason)),
                                 status_utc = @Now, closed_utc = @Now
                          WHERE id = @Id AND status IN ('SENDING', 'SENT', 'ACCEPTED', 'WITHDRAW');",
-                "5" or "9" => @"UPDATE fxvol.fxohub_rfq_price SET status = 'REJECTED',
+                // Not found after our timeout cancel: it was already gone at FXOhub, so expired.
+                "5" or "9" => @"UPDATE fxvol.fxohub_rfq_price
+                                SET status = IF(@Status = '9' AND withdraw_reason = '" + FxoPriceToCancel.TimeRanOut + @"', 'EXPIRED', 'REJECTED'),
                                 status_reason = CONCAT(IF(@Status = '9', 'quote not found', 'rejected'), IFNULL(CONCAT(': ', @Text), '')),
                                 status_utc = @Now, closed_utc = @Now
                          WHERE id = @Id AND status IN ('SENDING', 'SENT', 'ACCEPTED', 'WITHDRAW');",
