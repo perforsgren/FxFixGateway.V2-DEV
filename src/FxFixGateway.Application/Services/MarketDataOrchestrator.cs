@@ -24,8 +24,8 @@ namespace FxFixGateway.Application.Services
         private readonly IMarketDataService? _marketData;
         private readonly ILogger<MarketDataOrchestrator> _logger;
 
-        // Not VOLB_FIXHUB_DEV: it only takes requests (QuoteRequestService.RfqOnlySessions), so its logon sends no
-        // SecurityListRequest and nothing is subscribed on it.
+        // Not VOLB_FIXHUB_DEV: its logon sends no SecurityListRequest or MarketDataRequest; only the instruments its RFQs are
+        // on are subscribed (QuoteRequestService), and their snapshots are kept under its own session key.
         private static readonly HashSet<string> MarketDataSessions = new(StringComparer.OrdinalIgnoreCase)
         {
             "VOLB_FIXHUB_PROD"

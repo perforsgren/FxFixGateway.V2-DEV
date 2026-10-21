@@ -13,16 +13,13 @@ namespace FxFixGateway.Application.Services
         private readonly IMarketDataService?           _marketData;
         private readonly ILogger<QuoteRequestService>  _logger;
 
+        // The sessions whose QuoteRequests (35=R) are stored, each request's instrument upserted and marked subscribed so its
+        // market data (35=W) is kept. VOLB_FIXHUB_DEV (Volbroker's SUP environment, run in the same gateway as production):
+        // only the RFQs' instruments, stored under its own session key; it requests no security list or market data
+        // (MarketDataOrchestrator), so the runs Volbroker sends it on its own are not subscribed and are dropped.
         private static readonly HashSet<string> MarketDataSessions = new(StringComparer.OrdinalIgnoreCase)
         {
-            "VOLB_FIXHUB_PROD"
-        };
-
-        // Sessions that only take requests: a 35=R is stored as on a market data session, and its instrument is neither
-        // upserted nor marked subscribed, so no market data is kept from them (Volbroker's SUP environment, a test session
-        // run in the same gateway as production).
-        private static readonly HashSet<string> RfqOnlySessions = new(StringComparer.OrdinalIgnoreCase)
-        {
+            "VOLB_FIXHUB_PROD",
             "VOLB_FIXHUB_DEV"
         };
 
@@ -50,12 +47,11 @@ namespace FxFixGateway.Application.Services
                 "[{Session}] HandleQuoteRequestAsync anropad — SecurityId={SecId} Legs={LegCount}",
                 sessionKey, dto.SecurityId, dto.Legs.Count);
 
-            var rfqOnly = RfqOnlySessions.Contains(sessionKey);
-            if (!rfqOnly && !MarketDataSessions.Contains(sessionKey))
+            if (!MarketDataSessions.Contains(sessionKey))
             {
                 _logger.LogWarning(
-                    "[{Session}] 35=R ignoreras — session ej i MarketDataSessions eller RfqOnlySessions. Tillåtna: {Allowed}",
-                    sessionKey, string.Join(", ", MarketDataSessions.Concat(RfqOnlySessions)));
+                    "[{Session}] 35=R ignoreras — session ej i MarketDataSessions. Tillåtna: {Allowed}",
+                    sessionKey, string.Join(", ", MarketDataSessions));
                 return;
             }
 
@@ -87,10 +83,8 @@ namespace FxFixGateway.Application.Services
             // ─────────────────────────────────────────────────────────────────
 
             // The request first: the pricer and Interbank Prices see it as soon as it is stored. Its snapshots (35=W) are
-            // kept from now on (in memory at once; the instrument is marked subscribed in the database below), except on an
-            // RFQ-only session.
-            if (!rfqOnly)
-                _marketData?.MarkSubscribed(sessionKey, dto.SecurityId);
+            // kept from now on (in memory at once; the instrument is marked subscribed in the database below).
+            _marketData?.MarkSubscribed(sessionKey, dto.SecurityId);
             var started = System.Diagnostics.Stopwatch.StartNew();
             int saved = 0;
             foreach (var leg in filteredLegs)
@@ -112,14 +106,6 @@ namespace FxFixGateway.Application.Services
                 }
             }
             var savedMs = started.ElapsedMilliseconds;
-
-            if (rfqOnly)
-            {
-                _logger.LogInformation(
-                    "[{Session}] 35=R {QuoteReqId} SecurityId={SecId}: {Saved}/{Legs} leg(s) stored {StoredMs} ms after handling began; RFQ-only session, instrument not subscribed; received {Received:HH:mm:ss.fff}Z",
-                    sessionKey, dto.QuoteReqId, dto.SecurityId, saved, filteredLegs.Count, savedMs, dto.ReceivedUtc);
-                return;
-            }
 
             // Then the instrument: upsert + mark subscribed per leg.
             foreach (var leg in filteredLegs)

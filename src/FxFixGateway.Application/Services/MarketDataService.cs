@@ -60,8 +60,10 @@ namespace FxFixGateway.Application.Services
 
         private static readonly HashSet<string> MarketDataSessions = new(StringComparer.OrdinalIgnoreCase)
         {
-            // Not VOLB_FIXHUB_DEV: it only takes requests (QuoteRequestService.RfqOnlySessions), its snapshots are not kept.
             "VOLB_FIXHUB_PROD",
+            // Volbroker's SUP environment: only the instruments its RFQs are on are subscribed (QuoteRequestService), so the
+            // runs Volbroker sends it on its own fail the subscription check and are dropped.
+            "VOLB_FIXHUB_DEV",
             "FXOHUB_UAT"
         };
 
