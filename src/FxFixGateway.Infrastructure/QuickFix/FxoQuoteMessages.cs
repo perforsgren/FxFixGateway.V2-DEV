@@ -24,8 +24,16 @@ namespace FxFixGateway.Infrastructure.QuickFix
         private static readonly int[] LegOrder =
             { 600, 7940, 687, 611, 612, 624, 6713, 6215, 556, 5678, 9125, 588, 9034, 9159 };
 
-        /// <summary>TraderID (9536): FXOhub truncates after 15 characters, so we send at most 15.</summary>
-        public static string TraderId(string trader) => trader.Length > 15 ? trader.Substring(0, 15) : trader;
+        /// <summary>
+        /// TraderID (9536): the trader's name on FXOhub quotes (fxvol.pricer_trader, written with the price as trader_name,
+        /// e.g. "PFORSGREN"), else the pricer user. FXOhub keeps it as text for the broker (not mapped to a user, Graham
+        /// 21 Oct) and truncates after 15 characters, so we send at most 15.
+        /// </summary>
+        public static string TraderId(string trader, string? name = null)
+        {
+            var id = string.IsNullOrWhiteSpace(name) ? trader : name;
+            return id.Length > 15 ? id.Substring(0, 15) : id;
+        }
 
         public static QF.Message BuildQuote(FxoPriceToSend p, string quoteId, DateTime nowUtc)
         {
@@ -39,7 +47,7 @@ namespace FxFixGateway.Infrastructure.QuickFix
             Set(m, 9126, p.OptionStrategy);
             m.SetField(new QF.Fields.StringField(60, Utc(nowUtc)));
             Set(m, 5475, p.PremiumDel);
-            m.SetField(new QF.Fields.StringField(9536, TraderId(p.Trader)));
+            m.SetField(new QF.Fields.StringField(9536, TraderId(p.Trader, p.TraderName)));
             if (p.ExecDeltaHedge == "1")
             {
                 m.SetField(new QF.Fields.StringField(9015, "1"));
@@ -79,7 +87,7 @@ namespace FxFixGateway.Infrastructure.QuickFix
             m.SetField(new QF.Fields.StringField(131, c.QuoteReqId));
             m.SetField(new QF.Fields.StringField(117, c.QuoteId));
             m.SetField(new QF.Fields.StringField(298, "1"));
-            m.SetField(new QF.Fields.StringField(9536, TraderId(c.Trader)));
+            m.SetField(new QF.Fields.StringField(9536, TraderId(c.Trader, c.TraderName)));
             if (c.Reason != null && c.Reason.StartsWith("spot left", StringComparison.Ordinal))
                 m.SetField(new QF.Fields.StringField(10127, "2"));        // MARKET CONDITIONS
             else if (c.Reason == FxoPriceToCancel.TimeRanOut)

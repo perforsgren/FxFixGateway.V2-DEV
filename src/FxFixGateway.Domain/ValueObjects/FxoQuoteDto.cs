@@ -9,7 +9,8 @@ namespace FxFixGateway.Domain.ValueObjects
         public long PriceId { get; init; }
         public long RfqId { get; init; }
         public int Version { get; init; }
-        public string Trader { get; init; } = string.Empty;   // TraderID (9536), first 15 characters
+        public string Trader { get; init; } = string.Empty;   // the pricer user (fxohub_rfq_price.trader)
+        public string? TraderName { get; init; }               // TraderID (9536) as the broker sees it (trader_name); null = Trader
         public DateTime? ValidUntilUtc { get; init; }          // our time stipulation (cancelled at it; 62 is not sent); null = GTC
         public decimal SpotRef { get; init; }                  // LegSpotRate (5235)
 
@@ -57,7 +58,8 @@ namespace FxFixGateway.Domain.ValueObjects
         public string SessionKey { get; init; } = string.Empty;
         public string QuoteReqId { get; init; } = string.Empty;
         public string QuoteId { get; init; } = string.Empty;
-        public string Trader { get; init; } = string.Empty;
+        public string Trader { get; init; } = string.Empty;   // the pricer user (fxohub_rfq_price.trader)
+        public string? TraderName { get; init; }               // TraderID (9536) as the broker sees it (trader_name); null = Trader
         public string? Reason { get; init; }
     }
 

@@ -99,7 +99,7 @@ namespace FxFixGateway.Application.BackgroundServices
             await _repository.MarkSentAsync(price.PriceId, quoteId, now);
             var legs = string.Join(", ", price.Legs.OrderBy(l => l.LegNo).Select(l => $"{l.LegId} {l.BidVol}/{l.OfferVol}"));
             await TryEventAsync(price.SessionKey, price.QuoteReqId, "S", "QUOTE_SENT",
-                                $"v{price.Version} QuoteID={quoteId} by {price.Trader} · {legs} · our spot {price.SpotRef} (not sent) · " + (price.ValidUntilUtc.HasValue ? $"ours until {price.ValidUntilUtc.Value:HH:mm:ss.fff}Z (62 not sent)" : "GTC"), raw);
+                                $"v{price.Version} QuoteID={quoteId} by {price.Trader}" + (price.TraderName != null ? $" as {price.TraderName}" : "") + $" · {legs} · our spot {price.SpotRef} (not sent) · " + (price.ValidUntilUtc.HasValue ? $"ours until {price.ValidUntilUtc.Value:HH:mm:ss.fff}Z (62 not sent)" : "GTC"), raw);
             _logger.LogInformation("[{Session}] FXOhub Quote sent: {QuoteReqId} v{Version} QuoteID={QuoteId} {Legs}",
                 price.SessionKey, price.QuoteReqId, price.Version, quoteId, legs);
         }
@@ -119,7 +119,7 @@ namespace FxFixGateway.Application.BackgroundServices
             }
             await _repository.MarkCancelSentAsync(cancel.PriceId, DateTime.UtcNow);
             await TryEventAsync(cancel.SessionKey, cancel.QuoteReqId, "Z", "QUOTE_CANCEL_SENT",
-                                $"QuoteID={cancel.QuoteId} by {cancel.Trader}" + (cancel.Reason != null ? $" · {cancel.Reason}" : ""), raw);
+                                $"QuoteID={cancel.QuoteId} by {cancel.Trader}" + (cancel.TraderName != null ? $" as {cancel.TraderName}" : "") + (cancel.Reason != null ? $" · {cancel.Reason}" : ""), raw);
             _logger.LogInformation("[{Session}] FXOhub Quote Cancel sent: {QuoteId} ({Reason})", cancel.SessionKey, cancel.QuoteId, cancel.Reason);
         }
 

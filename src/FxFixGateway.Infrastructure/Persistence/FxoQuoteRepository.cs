@@ -45,7 +45,7 @@ namespace FxFixGateway.Infrastructure.Persistence
         public async Task<IReadOnlyList<FxoPriceToSend>> GetQueuedAsync(DateTime nowUtc)
         {
             const string priceSql = @"
-                SELECT p.id, p.rfq_id, p.version, p.trader, p.valid_until_utc, p.spot_ref,
+                SELECT p.id, p.rfq_id, p.version, p.trader, p.trader_name, p.valid_until_utc, p.spot_ref,
                        r.session_key, r.quote_req_id, r.symbol, r.security_type, r.option_strategy, r.premium_del,
                        r.exec_delta_hedge, r.hedge_trade_type
                 FROM fxvol.fxohub_rfq_price p
@@ -80,6 +80,7 @@ namespace FxFixGateway.Infrastructure.Persistence
                         RfqId = r.GetInt64(r.GetOrdinal("rfq_id")),
                         Version = r.GetInt32(r.GetOrdinal("version")),
                         Trader = r.GetString(r.GetOrdinal("trader")),
+                        TraderName = Str(r, "trader_name"),
                         // Our time stipulation (ExpireAsync cancels at it; no ValidUntilTime is sent); null = GTC.
                         ValidUntilUtc = r.IsDBNull(r.GetOrdinal("valid_until_utc")) ? (DateTime?)null
                                       : DateTime.SpecifyKind(r.GetDateTime(r.GetOrdinal("valid_until_utc")), DateTimeKind.Utc),
@@ -173,7 +174,7 @@ namespace FxFixGateway.Infrastructure.Persistence
         public async Task<IReadOnlyList<FxoPriceToCancel>> GetWithdrawRequestsAsync()
         {
             const string sql = @"
-                SELECT p.id, p.quote_id, p.trader, p.withdraw_reason, r.session_key, r.quote_req_id
+                SELECT p.id, p.quote_id, p.trader, p.trader_name, p.withdraw_reason, r.session_key, r.quote_req_id
                 FROM fxvol.fxohub_rfq_price p
                 INNER JOIN fxvol.fxohub_rfq r ON r.id = p.rfq_id
                 WHERE p.status = 'WITHDRAW' AND p.cancel_sent_utc IS NULL AND p.quote_id IS NOT NULL
@@ -189,6 +190,7 @@ namespace FxFixGateway.Infrastructure.Persistence
                     PriceId = r.GetInt64(r.GetOrdinal("id")),
                     QuoteId = r.GetString(r.GetOrdinal("quote_id")),
                     Trader = r.GetString(r.GetOrdinal("trader")),
+                    TraderName = Str(r, "trader_name"),
                     Reason = Str(r, "withdraw_reason"),
                     SessionKey = r.GetString(r.GetOrdinal("session_key")),
                     QuoteReqId = r.GetString(r.GetOrdinal("quote_req_id")),
