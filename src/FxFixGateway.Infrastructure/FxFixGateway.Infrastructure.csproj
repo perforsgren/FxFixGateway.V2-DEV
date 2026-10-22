@@ -31,6 +31,10 @@
 	</ItemGroup>
 
 	<ItemGroup>
+		<InternalsVisibleTo Include="FxFixGateway.Tests" />
+	</ItemGroup>
+
+	<ItemGroup>
 		<Reference Include="FxTradeHub.Contracts">
 			<HintPath>..\..\..\OptionSuite.V2\libs\FxTradeHub\FxTradeHub.Contracts\bin\Debug\netstandard2.0\FxTradeHub.Contracts.dll</HintPath>
 			<Private>True</Private>

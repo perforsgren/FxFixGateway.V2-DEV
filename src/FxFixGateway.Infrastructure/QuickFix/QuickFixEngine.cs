@@ -29,6 +29,7 @@ namespace FxFixGateway.Infrastructure.QuickFix
         private readonly IFxoRfqService?                 _fxoRfqService;
         private readonly IFxoQuoteService?               _fxoQuoteService;
         private readonly IVolbrokerQuoteService?         _volbrokerQuoteService;
+        private readonly IBloombergRfqService?           _bloombergRfqService;
 
         private readonly Dictionary<string, SSLTunnelProxy> _sslTunnels = new();
 
@@ -62,7 +63,8 @@ namespace FxFixGateway.Infrastructure.QuickFix
             IPushNotificationService? pushNotification         = null,
             IFxoRfqService? fxoRfqService                      = null,
             IFxoQuoteService? fxoQuoteService                  = null,
-            IVolbrokerQuoteService? volbrokerQuoteService      = null)
+            IVolbrokerQuoteService? volbrokerQuoteService      = null,
+            IBloombergRfqService? bloombergRfqService          = null)
         {
             _logger              = logger;
             _dataDictionaryPath  = dataDictionaryPath ?? GetDefaultDataDictionaryPath();
@@ -78,6 +80,7 @@ namespace FxFixGateway.Infrastructure.QuickFix
             _fxoRfqService       = fxoRfqService;
             _fxoQuoteService     = fxoQuoteService;
             _volbrokerQuoteService = volbrokerQuoteService;
+            _bloombergRfqService = bloombergRfqService;
         }
 
         /// <summary>The QuickFIX session for <paramref name="sessionKey"/>, or null before initialisation or for an unknown key.</summary>
@@ -206,6 +209,20 @@ namespace FxFixGateway.Infrastructure.QuickFix
                 .Select(c => c.SessionKey)
                 .ToList();
 
+            // Bloomberg FXGO sessions (VenueCode BLOOMBERG) and sessions that keep their sequence numbers across logons.
+            var bloombergSessionKeys = configList
+                .Where(c => FxFixGateway.Domain.Constants.VenueCodes.IsBloomberg(c.VenueCode))
+                .Select(c => c.SessionKey)
+                .ToList();
+            var keepSeqNumSessionKeys = configList
+                .Where(c => !c.ResetSeqNumOnLogon)
+                .Select(c => c.SessionKey)
+                .ToList();
+            foreach (var key in bloombergSessionKeys)
+                _logger?.LogInformation("[{SessionKey}] Bloomberg FXGO session: its messages go to the Bloomberg RFQ service", key);
+            foreach (var key in keepSeqNumSessionKeys)
+                _logger?.LogInformation("[{SessionKey}] Sequence numbers kept across logons (no reset, no 141=Y)", key);
+
             // Skapa QuickFixSender och koppla till proxy nu när sessionIdMap finns
             if (_senderProxy != null)
             {
@@ -233,7 +250,10 @@ namespace FxFixGateway.Infrastructure.QuickFix
                 _pushNotification,       // OnLogout's disconnect notice (was not passed before)
                 _fxoRfqService,
                 _fxoQuoteService,
-                _volbrokerQuoteService);
+                _volbrokerQuoteService,
+                _bloombergRfqService,
+                bloombergSessionKeys,
+                keepSeqNumSessionKeys);
             _application.StatusChanged += OnStatusChanged;
             _application.MessageReceived += OnMessageReceived;
             _application.MessageSent += OnMessageSent;

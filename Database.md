@@ -22,6 +22,9 @@
 | `fxohub_rfq_event` | Varje FXOhub-RFQ-meddelande som händelse (revision, hit ratio) |
 | `fxohub_rfq_price` | Våra priser på FXOhub-RFQ:er, en rad per version (skrivs av pricern, skickas av gatewayen) |
 | `fxohub_rfq_price_leg` | Benen i en prisversion (vol bid/offer, strike, delta) |
+| `bloomberg_rfq` | Bloomberg FXGO Options-RFQ:er (35=R), en rad per fråga med status och vår kvittens |
+| `bloomberg_rfq_leg` | Benen i en Bloomberg-RFQ |
+| `bloomberg_rfq_event` | Varje meddelande på en Bloomberg-session som händelse, våra (35=AI) också |
 
 Referenstabell: `vol_tenor_def` — tillåtna tenorkoder (OD, ON, 1M, 3M, 6M, 1Y …)
 
@@ -297,3 +300,48 @@ FXOhubs svar om hur en match syns och vilket id som kopplar fråga, pris och tra
 → fxohub_rfq_event (DEPTH, eller DEPTH_EXECUTION när MDSource 5177 = 0)
 
 RFQ-sessionen måste använda `FIX44_FXOhub.xml` som data dictionary, så att grupperna (146/555/453 och 296/268) tolkas.
+
+---
+
+## Bloomberg FXGO Options-RFQ — `bloomberg_rfq*`
+
+Skript: `docs/sql/20261022_bloomberg_rfq.sql`. Skrivs av `BloombergRfqService` / `BloombergRfqRepository`; ska läsas av
+pricerns Incoming RFQ-blotter senare. Specifikation: Bloombergs FX FIXBook for Options RFS 4.1.5 (FIX 4.4, juli 2026,
+märkt DRAFT). En fråga identifieras med `(session_key, quote_req_id)`, som FXOhubs.
+
+Sessionen: `fix_connection_config.VenueCode = 'BLOOMBERG'` (då går alla dess meddelanden till Bloomberg-tjänsten före de
+andra venues fall i `QuickFixApplication.FromApp`; Bloombergs 35=R har 9015 och hade annars tagits av FXOhub-kontrollen),
+`DataDictionaryFile = 'FIX44_Bloomberg.xml'` (grupperna 146, 453/802, 555/670/756, 78; byggd av
+`docs/dictionaries/build_fix44_bloomberg.py` ur QuickFIXn:s FIX44.xml) och `ResetSeqNumOnLogon = 0` (se nedan).
+
+| Tabell | Nyckel | Innehåll |
+|--------|--------|----------|
+| `bloomberg_rfq` | `(session_key, quote_req_id)` unik | Frågan: status (`INCOMING`, `CANCELLED`; senare från pricern), header 50/116/128, MarketSegmentID (1300), instrumentet (55/65/48/22 i 146), konto (1), InCompetition (6702), handelsdag (75), sida (54), strategi (9126, kod och namn), parterna (venue: MIC, roll, LEI; taker: deal code, firma, UUID, trader, LEI; maker: deal code, firma, LEI), spot (5235), premie (5830, 5020, 22195), hedgen (9015, 9016, 6666, 9679, 9123, 9657, 9112, 541, 22514, 22656, 22292, 22898), avveckling (63, 120, 9102), QuotePriceType (692), solve-for (22720, 22723), UPI (2891), antal allokeringar (78), värden som inte gick att läsa (`parse_problems`), vår kvittens (`ack_quote_id`, `ack_sent_utc`) och rått meddelande |
+| `bloomberg_rfq_leg` | `rfq_id` → `bloomberg_rfq.id` | Ett ben per rad: LegRefID (654), ISIN (602), UPI (2893), valuta (556), produkt (22410), cut (9124, Bloombergs kod: NYK = NY 10:00, NYC = NY 16:59), expiry (432), leverans (743), call/put (9034, 9072), delta (9075), strike (612, saknas vid solve-for), belopp (9018), stil (9019), Position (6351), forward (9099), räntor (9115/9118), barriär (9130–9132, 9137, 9187), hedge per ben (22562–22968) och antal allokeringar (670) |
+| `bloomberg_rfq_event` | — | En rad per meddelande: typ (`INCOMING`, `ACK_SENT`, `ACK_FAILED`, `CANCELLED`, `CANCELLED_UNKNOWN`, `INVALID`, `UNHANDLED`), detalj och rått meddelande |
+
+### Dataflöde (steg 1: ta emot och kvittera)
+
+35=R (QuoteRequest)
+→ bloomberg_rfq (upsert på session + QuoteReqID; status och kvittens behålls vid omsändning) + bloomberg_rfq_leg (ersätts)
+→ bloomberg_rfq_event (INCOMING)
+→ 35=AI (QuoteStatusReport, 131 + 117 `BBR{id}` + 297=0 "accepted for pricing") när frågan sparats, inte är `CANCELLED`
+  och inte redan kvitterats → `ack_quote_id` / `ack_sent_utc` + event ACK_SENT (ACK_FAILED om den inte gick att skicka).
+  En fråga som inte gick att spara kvitteras inte.
+
+35=Z (QuoteCancel) med 298=2 (Bloombergs: kunden avbröt eller avböjde)
+→ bloomberg_rfq.status = CANCELLED med orsak ("Cancelled by Bloomberg" + 58) → event CANCELLED (CANCELLED_UNKNOWN om
+  frågan inte finns). Annan 298: event INVALID, status oförändrad.
+
+Övriga (35=D New Order Single, 35=BN …): event UNHANDLED och ett fel i loggen; inget skickas tillbaka. Prissättning
+(35=S), pass (35=AG) och avslut (35=D → 35=8) kommer i senare steg.
+
+---
+
+## `fix_config_dev.fix_connection_config.ResetSeqNumOnLogon`
+
+Skript: `docs/sql/20261022_fix_connection_reset_seqnum.sql` (kör det innan en gateway med kolumnen startas: sessionerna
+läses med den). `TINYINT(1) NOT NULL DEFAULT 1`: 1 = sekvensnumren nollställs vid inloggning, utloggning och nedkoppling
+(141=Y i vår Logon), som alla sessioner hittills; 0 = de behålls, så en lucka skickas om från filbutiken (QuickFIX
+nollställer ändå vid en ny sessionsperiod, StartTime). Sätts bara i databasen (`SessionRepository.SaveAsync` skriver den
+inte, som SSL-tunnelns kolumner).

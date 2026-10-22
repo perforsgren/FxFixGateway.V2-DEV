@@ -53,7 +53,8 @@ namespace FxFixGateway.Infrastructure.Persistence
                     SslRemotePort,
                     SslLocalPort,
                     SslSniHost,
-                    UseSSLTunnel
+                    UseSSLTunnel,
+                    ResetSeqNumOnLogon
                 FROM fix_connection_config
                 ORDER BY SessionKey";
 
@@ -110,7 +111,8 @@ namespace FxFixGateway.Infrastructure.Persistence
                     SslRemotePort,
                     SslLocalPort,
                     SslSniHost,
-                    UseSSLTunnel
+                    UseSSLTunnel,
+                    ResetSeqNumOnLogon
                 FROM fix_connection_config
                 WHERE SessionKey = @SessionKey";
 
@@ -245,7 +247,9 @@ namespace FxFixGateway.Infrastructure.Persistence
                 sslRemoteHost: reader.IsDBNull(reader.GetOrdinal("SslRemoteHost")) ? null : reader.GetString(reader.GetOrdinal("SslRemoteHost")),
                 sslRemotePort: reader.IsDBNull(reader.GetOrdinal("SslRemotePort")) ? null : reader.GetInt32(reader.GetOrdinal("SslRemotePort")),
                 sslLocalPort: reader.IsDBNull(reader.GetOrdinal("SslLocalPort")) ? null : reader.GetInt32(reader.GetOrdinal("SslLocalPort")),
-                sslSniHost: reader.IsDBNull(reader.GetOrdinal("SslSniHost")) ? null : reader.GetString(reader.GetOrdinal("SslSniHost"))
+                sslSniHost: reader.IsDBNull(reader.GetOrdinal("SslSniHost")) ? null : reader.GetString(reader.GetOrdinal("SslSniHost")),
+                // Set in the database only (docs/sql/20261022_fix_connection_reset_seqnum.sql); SaveAsync does not write it.
+                resetSeqNumOnLogon: reader.GetBoolean(reader.GetOrdinal("ResetSeqNumOnLogon"))
             );
         }
 

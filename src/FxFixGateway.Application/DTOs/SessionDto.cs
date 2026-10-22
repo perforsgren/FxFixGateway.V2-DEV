@@ -35,6 +35,7 @@ namespace FxFixGateway.Application.DTOs
         public TimeSpan StartTime { get; set; }
         public TimeSpan EndTime { get; set; }
         public int ReconnectIntervalSeconds { get; set; }
+        public bool ResetSeqNumOnLogon { get; set; } = true;
 
         public string? LogonUsername { get; set; }
         public string? Password { get; set; }

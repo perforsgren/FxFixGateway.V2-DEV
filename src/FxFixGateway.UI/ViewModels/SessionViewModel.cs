@@ -148,7 +148,7 @@ namespace FxFixGateway.UI.ViewModels
         // Timeout Properties (readonly)
         public int LogonTimeout => 30;
         public int LogoutTimeout => 5;
-        public bool ResetOnLogon => false;
+        public bool ResetOnLogon => _session.Configuration.ResetSeqNumOnLogon;
 
         // Computed Properties
         public string StatusColor => Status switch

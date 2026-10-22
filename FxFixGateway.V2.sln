@@ -17,6 +17,10 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution items", "Solution 
 		Database.md = Database.md
 	EndProjectSection
 EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tests", "tests", "{1E7DC029-17BF-4584-B2CC-751842A741DB}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FxFixGateway.Tests", "tests\FxFixGateway.Tests\FxFixGateway.Tests.csproj", "{4D2DCFF3-7C01-4FD9-BE7B-B859BAA224A4}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -39,11 +43,18 @@ Global
 		{64A9D251-F6DC-4DCB-A1AB-FC9ED8516D79}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{64A9D251-F6DC-4DCB-A1AB-FC9ED8516D79}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{64A9D251-F6DC-4DCB-A1AB-FC9ED8516D79}.Release|Any CPU.Build.0 = Release|Any CPU
+		{4D2DCFF3-7C01-4FD9-BE7B-B859BAA224A4}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{4D2DCFF3-7C01-4FD9-BE7B-B859BAA224A4}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{4D2DCFF3-7C01-4FD9-BE7B-B859BAA224A4}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{4D2DCFF3-7C01-4FD9-BE7B-B859BAA224A4}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {B35ECFE6-5096-4C63-A516-5A9F5DA2D7A0}
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{4D2DCFF3-7C01-4FD9-BE7B-B859BAA224A4} = {1E7DC029-17BF-4584-B2CC-751842A741DB}
 	EndGlobalSection
 EndGlobal

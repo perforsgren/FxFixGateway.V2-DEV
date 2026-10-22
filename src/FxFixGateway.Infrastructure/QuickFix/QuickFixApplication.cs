@@ -29,6 +29,9 @@ namespace FxFixGateway.Infrastructure.QuickFix
         private readonly IFxoRfqService?               _fxoRfqService;
         private readonly IFxoQuoteService?             _fxoQuoteService;
         private readonly IVolbrokerQuoteService?       _volbrokerQuoteService;
+        private readonly IBloombergRfqService?         _bloombergRfqService;
+        private readonly HashSet<string>               _bloombergSessions;
+        private readonly HashSet<string>               _keepSeqNumSessions;
         private readonly ISessionHeartbeatNotifier?    _heartbeatNotifier;
         private readonly IPushNotificationService?     _pushNotification;
 
@@ -61,7 +64,10 @@ namespace FxFixGateway.Infrastructure.QuickFix
             IPushNotificationService? pushNotification      = null,
             IFxoRfqService? fxoRfqService                  = null,
             IFxoQuoteService? fxoQuoteService              = null,
-            IVolbrokerQuoteService? volbrokerQuoteService  = null)
+            IVolbrokerQuoteService? volbrokerQuoteService  = null,
+            IBloombergRfqService? bloombergRfqService      = null,
+            IEnumerable<string>? bloombergSessionKeys      = null,
+            IEnumerable<string>? keepSeqNumSessionKeys     = null)
         {
             _sessionKeyMap      = sessionKeyMap ?? throw new ArgumentNullException(nameof(sessionKeyMap));
             _sessionCredentials = sessionCredentials ?? new Dictionary<string, (string, string)>();
@@ -80,6 +86,9 @@ namespace FxFixGateway.Infrastructure.QuickFix
             _fxoRfqService       = fxoRfqService;
             _fxoQuoteService     = fxoQuoteService;
             _volbrokerQuoteService = volbrokerQuoteService;
+            _bloombergRfqService = bloombergRfqService;
+            _bloombergSessions   = new HashSet<string>(bloombergSessionKeys ?? Array.Empty<string>(), StringComparer.OrdinalIgnoreCase);
+            _keepSeqNumSessions  = new HashSet<string>(keepSeqNumSessionKeys ?? Array.Empty<string>(), StringComparer.OrdinalIgnoreCase);
         }
 
         /// <summary>
@@ -176,7 +185,8 @@ namespace FxFixGateway.Infrastructure.QuickFix
                     if (!string.IsNullOrEmpty(credentials.Password))
                         message.SetField(new QF.Fields.Password(credentials.Password)); // tag 554
 
-                    if (!message.IsSetField(QF.Fields.Tags.ResetSeqNumFlag))
+                    // Not on a session that keeps its sequence numbers (ResetSeqNumOnLogon = 0): 141=Y would reset them.
+                    if (!_keepSeqNumSessions.Contains(sessionKey) && !message.IsSetField(QF.Fields.Tags.ResetSeqNumFlag))
                         message.SetField(new QF.Fields.ResetSeqNumFlag(true)); // tag 141=Y
                 }
             }
@@ -318,6 +328,14 @@ namespace FxFixGateway.Infrastructure.QuickFix
                 rawMessage,
                 receivedUtc));
 
+            // Bloomberg FXGO (VenueCode BLOOMBERG): its own handling, before the other venues' cases (its QuoteRequest carries
+            // ExecDeltaHedge 9015, which the FXOhub check below would take).
+            if (_bloombergSessions.Contains(sessionKey))
+            {
+                HandleBloombergMessage(sessionKey, msgType, message, rawMessage);
+                return;
+            }
+
             switch (msgType)
             {
                 case "AE":
@@ -443,6 +461,78 @@ namespace FxFixGateway.Infrastructure.QuickFix
         }
 
         // ── Privata hjälpmetoder ────────────────────────────────────────────────
+
+        /// <summary>
+        /// A message on a Bloomberg session: QuoteRequest (R) and Quote Cancel (Z) go to the Bloomberg RFQ service; anything
+        /// else (a New Order Single, an Execution Acknowledgement …) is not handled yet and is reported as such.
+        /// </summary>
+        private void HandleBloombergMessage(string sessionKey, string msgType, QF.Message message, string rawMessage)
+        {
+            switch (msgType)
+            {
+                case "R":
+                    HandleBloombergRfq(sessionKey, msgType, () =>
+                    {
+                        var dto = BloombergRfqMessages.ParseQuoteRequest(message, rawMessage);
+                        return () => _bloombergRfqService!.HandleQuoteRequestAsync(sessionKey, dto);
+                    });
+                    break;
+
+                case "Z":
+                    HandleBloombergRfq(sessionKey, msgType, () =>
+                    {
+                        var dto = BloombergRfqMessages.ParseQuoteCancel(message, rawMessage);
+                        return () => _bloombergRfqService!.HandleQuoteCancelAsync(sessionKey, dto);
+                    });
+                    break;
+
+                default:
+                    ErrorOccurred?.Invoke(this, new ErrorOccurredEvent(
+                        sessionKey, $"Bloomberg 35={msgType} is not handled yet — nothing sent back"));
+                    HandleBloombergRfq(sessionKey, msgType, () =>
+                    {
+                        var quoteReqId = TryGetField(message, 131);
+                        return () => _bloombergRfqService!.HandleUnhandledAsync(sessionKey, msgType, quoteReqId, rawMessage);
+                    });
+                    break;
+            }
+        }
+
+        /// <summary>As <see cref="HandleFxoRfq"/>, for Bloomberg sessions: parsed here, handled on a background task, a failure reported.</summary>
+        private void HandleBloombergRfq(string sessionKey, string msgType, Func<Func<Task>> parse)
+        {
+            if (_bloombergRfqService == null)
+            {
+                ErrorOccurred?.Invoke(this, new ErrorOccurredEvent(
+                    sessionKey, $"Bloomberg message 35={msgType} received but no Bloomberg RFQ service is configured — not stored"));
+                return;
+            }
+
+            Func<Task> handle;
+            try
+            {
+                handle = parse();
+            }
+            catch (Exception ex)
+            {
+                ErrorOccurred?.Invoke(this, new ErrorOccurredEvent(
+                    sessionKey, $"Bloomberg message 35={msgType} could not be parsed: {ex.Message}", ex));
+                return;
+            }
+
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    await handle();
+                }
+                catch (Exception ex)
+                {
+                    ErrorOccurred?.Invoke(this, new ErrorOccurredEvent(
+                        sessionKey, $"Bloomberg message 35={msgType} could not be handled: {ex.Message}", ex));
+                }
+            });
+        }
 
         /// <summary>
         /// Parses an FXOhub RFQ message on the QuickFIX thread (the message object is not used after this call) and

@@ -49,6 +49,7 @@ namespace FxFixGateway.Application.Mappers
                 StartTime = config.StartTime,
                 EndTime = config.EndTime,
                 ReconnectIntervalSeconds = config.ReconnectIntervalSeconds,  // ✅ FIX: (int)config.ReconnectInterval.TotalSeconds → config.ReconnectIntervalSeconds
+                ResetSeqNumOnLogon = config.ResetSeqNumOnLogon,
 
                 LogonUsername = config.LogonUsername,
                 Password = config.Password,
@@ -106,7 +107,8 @@ namespace FxFixGateway.Application.Mappers
                 createdUtc: dto.CreatedUtc,
                 updatedUtc: dto.UpdatedUtc,
                 updatedBy: dto.UpdatedBy,
-                notes: string.Empty
+                notes: string.Empty,
+                resetSeqNumOnLogon: dto.ResetSeqNumOnLogon
             );
         }
 

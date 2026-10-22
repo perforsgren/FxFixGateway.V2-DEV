@@ -54,6 +54,12 @@ namespace FxFixGateway.Domain.ValueObjects
         public int? SslLocalPort { get; }
         public string SslSniHost { get; }
 
+        /// <summary>
+        /// fix_connection_config.ResetSeqNumOnLogon: true (default) resets the sequence numbers on logon, logout and disconnect
+        /// (141=Y in our Logon); false keeps them, so a gap is resent from the store (Bloomberg). Set in the database only.
+        /// </summary>
+        public bool ResetSeqNumOnLogon { get; }
+
         public SessionConfiguration(
             int connectionId,
             string sessionKey,
@@ -86,7 +92,8 @@ namespace FxFixGateway.Domain.ValueObjects
             string sslRemoteHost = null,
             int? sslRemotePort = null,
             int? sslLocalPort = null,
-            string sslSniHost = null)
+            string sslSniHost = null,
+            bool resetSeqNumOnLogon = true)
         {
             // Validation
             if (string.IsNullOrWhiteSpace(sessionKey))
@@ -133,6 +140,7 @@ namespace FxFixGateway.Domain.ValueObjects
             SslRemotePort = sslRemotePort;
             SslLocalPort = sslLocalPort;
             SslSniHost = sslSniHost ?? string.Empty;
+            ResetSeqNumOnLogon = resetSeqNumOnLogon;
         }
 
         // With methods for creating modified copies
@@ -143,7 +151,8 @@ namespace FxFixGateway.Domain.ValueObjects
                 FixVersion, host, Port, SenderCompId, TargetCompId, HeartBtIntSec,
                 UseSsl, SslServerName, LogonUsername, Password, AckSupported, AckMode,
                 ReconnectIntervalSeconds, StartTime, EndTime, UseDataDictionary,
-                DataDictionaryFile, IsEnabled, CreatedUtc, DateTime.UtcNow, UpdatedBy, Notes);
+                DataDictionaryFile, IsEnabled, CreatedUtc, DateTime.UtcNow, UpdatedBy, Notes,
+                resetSeqNumOnLogon: ResetSeqNumOnLogon);
         }
 
         public SessionConfiguration WithPort(int port)
@@ -153,7 +162,8 @@ namespace FxFixGateway.Domain.ValueObjects
                 FixVersion, Host, port, SenderCompId, TargetCompId, HeartBtIntSec,
                 UseSsl, SslServerName, LogonUsername, Password, AckSupported, AckMode,
                 ReconnectIntervalSeconds, StartTime, EndTime, UseDataDictionary,
-                DataDictionaryFile, IsEnabled, CreatedUtc, DateTime.UtcNow, UpdatedBy, Notes);
+                DataDictionaryFile, IsEnabled, CreatedUtc, DateTime.UtcNow, UpdatedBy, Notes,
+                resetSeqNumOnLogon: ResetSeqNumOnLogon);
         }
 
         public SessionConfiguration WithEnabled(bool isEnabled)
@@ -163,7 +173,8 @@ namespace FxFixGateway.Domain.ValueObjects
                 FixVersion, Host, Port, SenderCompId, TargetCompId, HeartBtIntSec,
                 UseSsl, SslServerName, LogonUsername, Password, AckSupported, AckMode,
                 ReconnectIntervalSeconds, StartTime, EndTime, UseDataDictionary,
-                DataDictionaryFile, isEnabled, CreatedUtc, DateTime.UtcNow, UpdatedBy, Notes);
+                DataDictionaryFile, isEnabled, CreatedUtc, DateTime.UtcNow, UpdatedBy, Notes,
+                resetSeqNumOnLogon: ResetSeqNumOnLogon);
         }
 
         public bool Equals(SessionConfiguration other)
@@ -201,7 +212,7 @@ namespace FxFixGateway.Domain.ValueObjects
                 UseSsl, SslServerName, LogonUsername, Password, AckSupported, AckMode,
                 ReconnectIntervalSeconds, StartTime, EndTime, UseDataDictionary,
                 DataDictionaryFile, IsEnabled, CreatedUtc, DateTime.UtcNow, UpdatedBy, Notes,
-                useSSLTunnel, sslRemoteHost, sslRemotePort, sslLocalPort, sslSniHost);
+                useSSLTunnel, sslRemoteHost, sslRemotePort, sslLocalPort, sslSniHost, ResetSeqNumOnLogon);
         }
 
     }

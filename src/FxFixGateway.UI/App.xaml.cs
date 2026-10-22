@@ -285,6 +285,7 @@ namespace FxFixGateway.UI
                 var fxoRfqService = sp.GetRequiredService<IFxoRfqService>();
                 var fxoQuoteService = sp.GetRequiredService<IFxoQuoteService>();
                 var volbrokerQuoteService = sp.GetRequiredService<IVolbrokerQuoteService>();
+                var bloombergRfqService = sp.GetRequiredService<IBloombergRfqService>();
 
                 return new QuickFixEngine(
                     logger,
@@ -300,7 +301,8 @@ namespace FxFixGateway.UI
                     pushNotification, // ← lägg till
                     fxoRfqService,
                     fxoQuoteService,
-                    volbrokerQuoteService);
+                    volbrokerQuoteService,
+                    bloombergRfqService);
             });
 
             // Application Services
@@ -442,6 +444,17 @@ namespace FxFixGateway.UI
                     sp.GetRequiredService<ILogger<VolbrokerQuoteService>>()));
             services.AddSingleton<IVolbrokerQuoteService>(sp => sp.GetRequiredService<VolbrokerQuoteService>());
             services.AddHostedService(sp => sp.GetRequiredService<VolbrokerQuoteService>());
+
+            // Bloomberg FXGO Options RFQs (sessions with VenueCode BLOOMBERG): QuoteRequests kept in fxvol.bloomberg_rfq*
+            // (docs/sql/20261022_bloomberg_rfq.sql) and acknowledged (35=AI 297=0); Bloomberg's Quote Cancel closes them.
+            services.AddSingleton<IBloombergRfqRepository>(sp => new BloombergRfqRepository(fxvolConnectionString));
+            services.AddSingleton<IBloombergRfqSender>(sp =>
+                new BloombergRfqSender(key => (sp.GetRequiredService<IFixEngine>() as QuickFixEngine)?.GetSessionId(key)));
+            services.AddSingleton<IBloombergRfqService>(sp =>
+                new BloombergRfqService(
+                    sp.GetRequiredService<IBloombergRfqRepository>(),
+                    sp.GetRequiredService<IBloombergRfqSender>(),
+                    sp.GetRequiredService<ILogger<BloombergRfqService>>()));
 
             services.AddSingleton<IPushNotificationService, PushoverNotificationService>();
             services.AddHostedService<FixEngineHostedService>();

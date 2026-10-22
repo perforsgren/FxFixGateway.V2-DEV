@@ -104,6 +104,15 @@ namespace FxFixGateway.Infrastructure.QuickFix
                 sb.AppendLine($"HeartBtInt={config.HeartBtIntSec}");
                 sb.AppendLine($"ReconnectInterval={config.ReconnectIntervalSeconds}");
 
+                // A session that keeps its sequence numbers across logons (ResetSeqNumOnLogon = 0, e.g. Bloomberg): no reset on
+                // logon, logout or disconnect, so a gap is resent from the store. QuickFIX still resets at a new session period.
+                if (!config.ResetSeqNumOnLogon)
+                {
+                    sb.AppendLine("ResetOnLogon=N");
+                    sb.AppendLine("ResetOnLogout=N");
+                    sb.AppendLine("ResetOnDisconnect=N");
+                }
+
                 // Data dictionary
                 var dictionaryFile = GetDataDictionaryForSession(config);
                 if (!string.IsNullOrEmpty(dictionaryFile) && File.Exists(dictionaryFile))
