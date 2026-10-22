@@ -5033,25 +5033,11 @@
     <field number="268" name="NoMDEntries" type="NUMINGROUP" />
     <!-- STRING, not CHAR: Volbroker sends L1.0 / L1.1 / L2.0 / L2.1 (leg 1 or 2 bid / offer) on a spread interest quoted as
          outright prices (FIX Hub API 3.5, 5.4.3). -->
-    <field number="269" name="MDEntryType" type="STRING">
-      <value enum="0" description="BID" />
-      <value enum="1" description="OFFER" />
-      <value enum="2" description="TRADE" />
-      <value enum="3" description="INDEX_VALUE" />
-      <value enum="4" description="OPENING_PRICE" />
-      <value enum="5" description="CLOSING_PRICE" />
-      <value enum="6" description="SETTLEMENT_PRICE" />
-      <value enum="7" description="TRADING_SESSION_HIGH_PRICE" />
-      <value enum="8" description="TRADING_SESSION_LOW_PRICE" />
-      <value enum="9" description="TRADING_SESSION_VWAP_PRICE" />
-      <value enum="A" description="IMBALANCE" />
-      <value enum="B" description="TRADE_VOLUME" />
-      <value enum="C" description="OPEN_INTEREST" />
-      <value enum="L1.0" description="LEG1_BID" />
-      <value enum="L1.1" description="LEG1_OFFER" />
-      <value enum="L2.0" description="LEG2_BID" />
-      <value enum="L2.1" description="LEG2_OFFER" />
-    </field>
+    <!-- No list of values: besides the standard ones (0 bid, 1 offer, 2 trade …) Volbroker sends a price per leg of a structure
+         as L{n}.0 / L{n}.1 (leg n's bid / offer; SUP 22 Oct: L1.0 … L2.1 on a two-leg NOK/SEK spread), for any number of legs.
+         A list that stopped at L2.1 made QuickFIX reject the 35=W of a request of three or more legs (a fly) before it reached
+         the gateway. -->
+    <field number="269" name="MDEntryType" type="STRING" />
     <field number="270" name="MDEntryPx" type="PRICE" />
     <field number="271" name="MDEntrySize" type="QTY" />
     <field number="272" name="MDEntryDate" type="UTCDATEONLY" />
