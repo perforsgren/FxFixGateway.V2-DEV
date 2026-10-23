@@ -11,9 +11,9 @@ namespace FxFixGateway.Domain.ValueObjects
         public int Version { get; init; }
         public string Trader { get; init; } = string.Empty;    // the pricer user (volbroker_rfq_price.trader)
         public string? TraderName { get; init; }                // TraderID (9536): pricer_trader.volbroker_name; null = not sent
-        public DateTime? ValidUntilUtc { get; init; }           // our time stipulation: ValidityPeriod (192) and cancelled at it; null = GTC
-        public decimal? SpotLow { get; init; }                  // LowerSpotOutRate (188)
-        public decimal? SpotHigh { get; init; }                 // UpperSpotOutRate (190)
+        public DateTime? ValidUntilUtc { get; init; }           // our time stipulation: the gateway cancels the price at it; null = GTC
+        public decimal? SpotLow { get; init; }                  // our spot stipulation, watched by the pricer (not sent)
+        public decimal? SpotHigh { get; init; }
         public decimal? SizeMillions { get; init; }             // BidSize / OfferSize (134 / 135)
 
         public string SessionKey { get; init; } = string.Empty;
@@ -21,19 +21,6 @@ namespace FxFixGateway.Domain.ValueObjects
         public string? SecurityId { get; init; }                // 48
 
         public IReadOnlyList<VolbrokerPriceLegToSend> Legs { get; init; } = Array.Empty<VolbrokerPriceLegToSend>();
-
-        /// <summary>
-        /// ValidityPeriod (192, whole minutes, no fractions): the minutes left of the time stipulation, to the nearest whole
-        /// minute (a 2 min price sent 0.4 s after it was queued has 119.6 s left: 2, not 1). The gateway cancels the price at the
-        /// exact time, so Volbroker's own removal is the backstop, at most 30 s off. Null for GTC or under 30 s left (then only
-        /// the gateway's cancel ends it).
-        /// </summary>
-        public static int? ValidityMinutes(DateTime? validUntilUtc, DateTime nowUtc)
-        {
-            if (!validUntilUtc.HasValue) return null;
-            var minutes = (int)Math.Round((validUntilUtc.Value - nowUtc).TotalMinutes, MidpointRounding.AwayFromZero);
-            return minutes >= 1 ? minutes : null;
-        }
     }
 
     /// <summary>One leg of a queued Volbroker price: the leg's pair (LegSymbol 600, all the Quote repeats of it) and our vols.</summary>

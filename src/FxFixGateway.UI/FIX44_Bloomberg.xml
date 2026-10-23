@@ -84,9 +84,7 @@
       <field name="EncodedTextLen" required="N" />
       <field name="EncodedText" required="N" />
     </message>
-    <message name="XMLnonFIX" msgtype="n" msgcat="admin">
-      
-    </message>
+    <message name="XMLnonFIX" msgtype="n" msgcat="admin" />
     <message name="BusinessMessageReject" msgtype="j" msgcat="app">
       <field name="RefSeqNum" required="N" />
       <field name="RefMsgType" required="Y" />
@@ -3971,8 +3969,7 @@
       <value enum="2" description="AUTOMATED_EXECUTION_ORDER_PUBLIC" />
       <value enum="3" description="MANUAL_ORDER" />
     </field>
-    <field number="22" name="SecurityIDSource" type="STRING">
-      </field>
+    <field number="22" name="SecurityIDSource" type="STRING" />
     <field number="23" name="IOIid" type="STRING" />
     <field number="25" name="IOIQltyInd" type="CHAR">
       <value enum="L" description="LOW" />
@@ -3986,8 +3983,7 @@
       <value enum="C" description="CANCEL" />
       <value enum="R" description="REPLACE" />
     </field>
-    <field number="29" name="LastCapacity" type="CHAR">
-      </field>
+    <field number="29" name="LastCapacity" type="CHAR" />
     <field number="30" name="LastMkt" type="EXCHANGE" />
     <field number="31" name="LastPx" type="PRICE" />
     <field number="32" name="LastQty" type="QTY" />
@@ -4108,8 +4104,7 @@
       <value enum="D" description="ACCEPTED_FOR_BIDDING" />
       <value enum="E" description="PENDING_REPLACE" />
     </field>
-    <field number="40" name="OrdType" type="CHAR">  
-      </field>
+    <field number="40" name="OrdType" type="CHAR" />
     <field number="41" name="OrigClOrdID" type="STRING" />
     <field number="42" name="OrigTime" type="UTCTIMESTAMP" />
     <field number="43" name="PossDupFlag" type="BOOLEAN" />
@@ -4120,8 +4115,7 @@
     <field number="50" name="SenderSubID" type="STRING" />
     <field number="52" name="SendingTime" type="UTCTIMESTAMP" />
     <field number="53" name="Quantity" type="QTY" />
-    <field number="54" name="Side" type="CHAR">  
-      </field>
+    <field number="54" name="Side" type="CHAR" />
     <field number="55" name="Symbol" type="STRING" />
     <field number="56" name="TargetCompID" type="STRING" />
     <field number="57" name="TargetSubID" type="STRING" />
@@ -4143,11 +4137,9 @@
       <value enum="2" description="BACKGROUND" />
     </field>
     <field number="62" name="ValidUntilTime" type="UTCTIMESTAMP" />
-    <field number="63" name="SettlType" type="CHAR">
-      </field>
+    <field number="63" name="SettlType" type="CHAR" />
     <field number="64" name="SettlDate" type="LOCALMKTDATE" />
-    <field number="65" name="SymbolSfx" type="STRING">
-      </field>
+    <field number="65" name="SymbolSfx" type="STRING" />
     <field number="66" name="ListID" type="STRING" />
     <field number="67" name="ListSeqNo" type="INT" />
     <field number="68" name="TotNoOrders" type="INT" />
@@ -4241,8 +4233,7 @@
       <value enum="6" description="DUPLICATE_CLORDID_RECEIVED" />
       <value enum="99" description="OTHER" />
     </field>
-    <field number="103" name="OrdRejReason" type="INT">
-      </field>
+    <field number="103" name="OrdRejReason" type="INT" />
     <field number="104" name="IOIQualifier" type="CHAR">
       <value enum="A" description="ALL_OR_NONE" />
       <value enum="B" description="MARKET_ON_CLOSE" />
@@ -4327,8 +4318,7 @@
     <field number="147" name="Subject" type="STRING" />
     <field number="148" name="Headline" type="STRING" />
     <field number="149" name="URLLink" type="STRING" />
-    <field number="150" name="ExecType" type="CHAR">
-      </field>
+    <field number="150" name="ExecType" type="CHAR" />
     <field number="151" name="LeavesQty" type="QTY" />
     <field number="152" name="CashOrderQty" type="QTY" />
     <field number="153" name="AllocAvgPx" type="PRICE" />
@@ -4690,9 +4680,7 @@
       <value enum="1" description="SNAPSHOT_PLUS_UPDATES" />
       <value enum="2" description="DISABLE_PREVIOUS_SNAPSHOT_PLUS_UPDATE_REQUEST" />
     </field>
-    <field number="264" name="MarketDepth" type="INT">
-
-    </field>
+    <field number="264" name="MarketDepth" type="INT" />
     <field number="265" name="MDUpdateType" type="INT">
       <value enum="0" description="FULL_REFRESH" />
       <value enum="1" description="INCREMENTAL_REFRESH" />
@@ -4812,10 +4800,8 @@
     <field number="294" name="DefOfferSize" type="QTY" />
     <field number="295" name="NoQuoteEntries" type="NUMINGROUP" />
     <field number="296" name="NoQuoteSets" type="NUMINGROUP" />
-    <field number="297" name="QuoteStatus" type="INT">
-      </field>
-    <field number="298" name="QuoteCancelType" type="INT">
-      </field>
+    <field number="297" name="QuoteStatus" type="INT" />
+    <field number="298" name="QuoteCancelType" type="INT" />
     <field number="299" name="QuoteEntryID" type="STRING" />
     <field number="300" name="QuoteRejectReason" type="INT">
       <value enum="1" description="UNKNOWN_SYMBOL" />
@@ -5201,12 +5187,10 @@
     <field number="444" name="ListStatusText" type="STRING" />
     <field number="445" name="EncodedListStatusTextLen" type="LENGTH" />
     <field number="446" name="EncodedListStatusText" type="DATA" />
-    <field number="447" name="PartyIDSource" type="CHAR">
-      </field>
+    <field number="447" name="PartyIDSource" type="CHAR" />
     <field number="448" name="PartyID" type="STRING" />
     <field number="451" name="NetChgPrevDay" type="PRICEOFFSET" />
-    <field number="452" name="PartyRole" type="INT">
-      </field>
+    <field number="452" name="PartyRole" type="INT" />
     <field number="453" name="NoPartyIDs" type="NUMINGROUP" />
     <field number="454" name="NoSecurityAltID" type="NUMINGROUP" />
     <field number="455" name="SecurityAltID" type="STRING" />
@@ -5489,8 +5473,7 @@
     <field number="534" name="NoAffectedOrders" type="INT" />
     <field number="535" name="AffectedOrderID" type="STRING" />
     <field number="536" name="AffectedSecondaryOrderID" type="STRING" />
-    <field number="537" name="QuoteType" type="INT">
-      </field>
+    <field number="537" name="QuoteType" type="INT" />
     <field number="538" name="NestedPartyRole" type="INT" />
     <field number="539" name="NoNestedPartyIDs" type="NUMINGROUP" />
     <field number="540" name="TotalAccruedInterestAmt" type="AMT" />
@@ -5725,8 +5708,7 @@
     <field number="655" name="ContraLegRefID" type="STRING" />
     <field number="656" name="SettlCurrBidFxRate" type="FLOAT" />
     <field number="657" name="SettlCurrOfferFxRate" type="FLOAT" />
-    <field number="658" name="QuoteRequestRejectReason" type="INT">
-      </field>
+    <field number="658" name="QuoteRequestRejectReason" type="INT" />
     <field number="659" name="SideComplianceID" type="STRING" />
     <field number="660" name="AcctIDSource" type="INT">
       <value enum="1" description="BIC" />
@@ -5785,8 +5767,7 @@
       <value enum="5" description="PROCEEDS" />
     </field>
     <field number="691" name="Pool" type="STRING" />
-    <field number="692" name="QuotePriceType" type="INT">
-      </field>
+    <field number="692" name="QuotePriceType" type="INT" />
     <field number="693" name="QuoteRespID" type="STRING" />
     <field number="694" name="QuoteRespType" type="INT">
       <value enum="1" description="HIT_LIFT" />
@@ -5982,8 +5963,7 @@
     <field number="767" name="AllowableOneSidednessCurr" type="CURRENCY" />
     <field number="768" name="NoTrdRegTimestamps" type="NUMINGROUP" />
     <field number="769" name="TrdRegTimestamp" type="UTCTIMESTAMP" />
-    <field number="770" name="TrdRegTimestampType" type="INT">
-      </field>
+    <field number="770" name="TrdRegTimestampType" type="INT" />
     <field number="771" name="TrdRegTimestampOrigin" type="STRING" />
     <field number="772" name="ConfirmRefID" type="STRING" />
     <field number="773" name="ConfirmType" type="INT">
@@ -6115,8 +6095,7 @@
       <value enum="0" description="EXPIRE_ON_TRADING_SESSION_CLOSE" />
       <value enum="1" description="EXPIRE_ON_TRADING_SESSION_OPEN" />
     </field>
-    <field number="828" name="TrdType" type="INT">
-      </field>
+    <field number="828" name="TrdType" type="INT" />
     <field number="829" name="TrdSubType" type="INT" />
     <field number="830" name="TransferReason" type="STRING" />
     <field number="831" name="AsgnReqID" type="STRING" />

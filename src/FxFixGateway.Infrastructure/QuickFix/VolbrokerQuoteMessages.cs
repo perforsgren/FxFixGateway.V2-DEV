@@ -11,11 +11,11 @@ namespace FxFixGateway.Infrastructure.QuickFix
     /// (537=0 in its QuoteRequest). The legs carry only LegSymbol (600) and our vols, LegBidPx (681) / LegOfferPx (684) in
     /// vol points ("only tag 600 is required" of InstrumentLeg; with per-leg prices BidPx / OfferPx are ignored, so neither is
     /// sent). Symbol (55 = N/A) and SecurityID (48) as the example. BidSize / OfferSize (134 / 135) in millions of the request's
-    /// amount currency. The time stipulation as ValidityPeriod (192, the nearest whole minute: Volbroker removes the price
-    /// then; the gateway cancels it at the exact time), the spot stipulation as LowerSpotOutRate / UpperSpotOutRate (188 / 190)
-    /// (not SpotLimitsOffset 191, which errors with both). TraderID (9536) only when the trader's Volbroker name is set:
-    /// without it Volbroker shows the FIX account. PriceType (423, SEF) is not sent: the client default configured at
-    /// Volbroker applies. To modify the price a new Quote is sent for the same QuoteReqID (no QuoteRespID 693).
+    /// amount currency. No ValidityPeriod (192) and no spot-out levels (188 / 190): Volbroker does not use them on RFQ quotes,
+    /// which are indicative and stand until the RFQs clear at 17:00 New York (Keith and Gareth, 22 Oct); the gateway cancels
+    /// a price when its time runs out and the pricer when spot leaves its range. TraderID (9536) only when the trader's
+    /// Volbroker name is set: without it Volbroker shows the FIX account. PriceType (423, SEF) is not sent: the client default
+    /// configured at Volbroker applies. To modify the price a new Quote is sent for the same QuoteReqID (no QuoteRespID 693).
     /// </summary>
     public static class VolbrokerQuoteMessages
     {
@@ -49,13 +49,6 @@ namespace FxFixGateway.Infrastructure.QuickFix
                 var size = p.SizeMillions.Value.ToString("0.####", Inv);
                 m.SetField(new QF.Fields.StringField(134, size));
                 m.SetField(new QF.Fields.StringField(135, size));
-            }
-            var minutes = VolbrokerPriceToSend.ValidityMinutes(p.ValidUntilUtc, nowUtc);
-            if (minutes.HasValue) m.SetField(new QF.Fields.StringField(192, minutes.Value.ToString(Inv)));
-            if (p.SpotLow.HasValue && p.SpotHigh.HasValue)
-            {
-                m.SetField(new QF.Fields.StringField(188, p.SpotLow.Value.ToString("0.########", Inv)));
-                m.SetField(new QF.Fields.StringField(190, p.SpotHigh.Value.ToString("0.########", Inv)));
             }
             return m;
         }

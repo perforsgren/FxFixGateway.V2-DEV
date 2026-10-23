@@ -12,18 +12,19 @@ namespace FxFixGateway.Application.BackgroundServices
     /// (35=S, QuoteType 0 indicative, a vol per leg) on the request's session (only while it is logged on; QUEUED → SENDING →
     /// SENT); versions to withdraw → a Quote Cancel (35=Z). Volbroker's Quote Responses (35=AJ), Quote Status Reports (35=AI)
     /// and Business Message Rejects (35=j) are applied as they come. Each message is written to volbroker_rfq_event.
-    /// Only on <see cref="Sessions"/>: a version queued on another session (production) is rejected, not sent.
+    /// Only on <see cref="Sessions"/>: a version queued on another session is rejected, not sent.
     /// </summary>
     public sealed class VolbrokerQuoteService : BackgroundService, IVolbrokerQuoteService
     {
         private static readonly TimeSpan Interval = TimeSpan.FromMilliseconds(500);
 
         /// <summary>
-        /// The sessions our Volbroker quotes go out on: Volbroker's SUP environment while the sending is tested there (22 Oct).
-        /// Production (VOLB_FIXHUB_PROD) is added when it has been tested.
+        /// The sessions our Volbroker quotes go out on: production, from Monday 26 Oct (agreed with Volbroker; tested on SUP
+        /// 21–22 Oct), and Volbroker's SUP environment.
         /// </summary>
         private static readonly HashSet<string> Sessions = new(StringComparer.OrdinalIgnoreCase)
         {
+            "VOLB_FIXHUB_PROD",
             "VOLB_FIXHUB_DEV"
         };
 
@@ -113,12 +114,11 @@ namespace FxFixGateway.Application.BackgroundServices
             }
             await _repository.MarkSentAsync(price.PriceId, quoteId, now);
             var legs = string.Join(", ", price.Legs.OrderBy(l => l.LegNo).Select(l => $"{l.LegSymbol} {l.BidVol}/{l.OfferVol}"));
-            var minutes = VolbrokerPriceToSend.ValidityMinutes(price.ValidUntilUtc, now);
             await TryEventAsync(price.SessionKey, price.QuoteReqId, "S", "QUOTE_SENT",
                 $"v{price.Version} QuoteID={quoteId} by {price.Trader}" + (price.TraderName != null ? $" as {price.TraderName}" : " (no 9536)")
                 + $" · {legs}" + (price.SizeMillions.HasValue ? $" · {price.SizeMillions.Value:0.####}m" : "")
-                + (price.ValidUntilUtc.HasValue ? $" · until {price.ValidUntilUtc.Value:HH:mm:ss.fff}Z (192=" + (minutes.HasValue ? minutes.Value.ToString() : "not sent, under 30 s left") + ")" : " · GTC")
-                + (price.SpotLow.HasValue && price.SpotHigh.HasValue ? $" · spot out {price.SpotLow.Value} / {price.SpotHigh.Value}" : ""), raw);
+                + (price.ValidUntilUtc.HasValue ? $" · until {price.ValidUntilUtc.Value:HH:mm:ss.fff}Z (cancelled by us then)" : " · GTC")
+                + (price.SpotLow.HasValue && price.SpotHigh.HasValue ? $" · spot range {price.SpotLow.Value} / {price.SpotHigh.Value} (watched by the pricer)" : ""), raw);
             _logger.LogInformation("[{Session}] Volbroker Quote sent: {QuoteReqId} v{Version} QuoteID={QuoteId} {Legs}",
                 price.SessionKey, price.QuoteReqId, price.Version, quoteId, legs);
         }
