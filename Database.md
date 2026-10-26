@@ -15,6 +15,7 @@
 | `active_market_book` | Realtidsbok — senaste aktiva Bid/Ask per instrument och position |
 | `market_trades` | Registrerade affärer (MDEntryType=2) ur snapshots |
 | `quote_requests` | Inkommande RFQ-meddelanden (35=R) — Volbroker |
+| `session_heartbeat` | En rad per session: status, senaste heartbeat och senaste inloggning (`logon_utc`) |
 | `fxohub_rfq` | FXOhub-RFQ:er (35=R), en rad per fråga med status |
 | `fxohub_rfq_leg` | Benen i en FXOhub-RFQ |
 | `fxohub_rfq_quote` | Aktuellt djup per FXOhub-RFQ (35=W i RFQ-sessionen), en rad per pris |
@@ -204,6 +205,25 @@ egen tråd (inte tråd-poolen). Loggen skriver per fråga hur lång tid sparande
 Varje minut stämmer `QuoteRequestResubscribeService` av: instrumenten för de senaste 24 timmarnas frågor (äldre än 2
 min) som inte är `is_subscribed` i `market_instruments` registreras och markeras igen (misslyckat vid frågan, eller
 omstart sedan). Ett misslyckat försök loggas och görs om nästa minut.
+
+## `fxvol.session_heartbeat`
+
+En rad per session (`GatewayHeartbeatRepository`): Blottern och OptionSuites pricer larmar på den.
+
+| Kolumn | Typ | Beskrivning |
+|--------|-----|-------------|
+| `session_key` | varchar PK | Sessionen (t.ex. `VOLB_FIXHUB_PROD`) |
+| `status` | varchar | `ONLINE` (var 2:a sekund medan inloggad) eller `OFFLINE` (vid utloggning) |
+| `beat_utc` | datetime(3) | Senaste heartbeat, databasens klocka |
+| `logon_utc` | datetime(3) | Senaste inloggning, gatewayens klocka (samma som `quote_requests.received_utc`); skript `20261026_session_logon.sql` i OptionSuite.V2 |
+
+Volbroker sparar inga RFQ:er över en utloggning (Keith, Volbroker, 26 okt): en fråga som kom före sessionens senaste
+inloggning finns inte kvar där, och ett pris på den avvisas (`VolbrokerReconnect`; en fråga som skickats om med samma
+QuoteReqID räknas från sin senaste ankomst; minst en sekund före inloggningen, eftersom `received_utc` kan vara i hela
+sekunder). Gatewayen skickar ingen Quote eller Quote Cancel på en sådan fråga, och våra levande versioner på den blir
+`EXPIRED` ("Volbroker dropped the request when we logged on again at …") med händelsen DROPPED i `volbroker_rfq_event`.
+Frågan själv lämnas: pricern visar den med Send avstängd och förklaringen. Inloggningstiden hålls också i minnet
+(`ISessionLogonTimes`, från `GatewayHeartbeatService.SessionOnline`).
 
 ## Dataflöde (Volbroker)
 

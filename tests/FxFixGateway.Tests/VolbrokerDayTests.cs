@@ -102,7 +102,7 @@ namespace FxFixGateway.Tests
             Assert.Empty(repo.Cleared);
         }
 
-        private sealed class FakeSender : IVolbrokerQuoteSender
+        internal sealed class FakeSender : IVolbrokerQuoteSender
         {
             public List<string> Quotes { get; } = new();
             public List<string> Cancels { get; } = new();
@@ -111,7 +111,7 @@ namespace FxFixGateway.Tests
             public string SendQuoteCancel(VolbrokerPriceToCancel cancel) { Cancels.Add(cancel.QuoteId); return "35=Z"; }
         }
 
-        private sealed class FakeRepository : IVolbrokerQuoteRepository
+        internal sealed class FakeRepository : IVolbrokerQuoteRepository
         {
             public List<VolbrokerLiveVersion> Live { get; } = new();
             public List<VolbrokerPriceToSend> Queued { get; } = new();

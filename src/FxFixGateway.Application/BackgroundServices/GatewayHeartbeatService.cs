@@ -8,7 +8,7 @@ namespace FxFixGateway.Application.BackgroundServices
     /// Hanterar per-session heartbeats mot fxvol.session_heartbeat.
     /// Startas/stoppas av QuickFixApplication via ISessionHeartbeatNotifier.
     /// </summary>
-    public class GatewayHeartbeatService : BackgroundService, ISessionHeartbeatNotifier
+    public class GatewayHeartbeatService : BackgroundService, ISessionHeartbeatNotifier, ISessionLogonTimes
     {
         private static readonly TimeSpan Interval      = TimeSpan.FromSeconds(2);
         private static readonly TimeSpan OfflineTimeout = TimeSpan.FromSeconds(10);
@@ -17,6 +17,7 @@ namespace FxFixGateway.Application.BackgroundServices
         private readonly ILogger<GatewayHeartbeatService> _logger;
 
         private readonly Dictionary<string, CancellationTokenSource> _sessions = new();
+        private readonly Dictionary<string, DateTime> _logons = new(StringComparer.OrdinalIgnoreCase);
         private readonly List<Task> _pendingOfflineTasks = new();
         private readonly object _lock = new();
 
@@ -33,9 +34,23 @@ namespace FxFixGateway.Application.BackgroundServices
 
         /// <summary>
         /// Anropas av QuickFixApplication.OnLogon — startar heartbeat-loop för sessionen.
+        /// The logon time is taken here, on the session's thread in OnLogon (before any message after the logon is handled), on
+        /// this gateway's clock: kept for <see cref="LastLogonUtc"/> and written to session_heartbeat.logon_utc (every logon).
         /// </summary>
         public void SessionOnline(string sessionKey)
         {
+            var logonUtc = DateTime.UtcNow;
+            lock (_lock)
+                _logons[sessionKey] = logonUtc;
+            _ = Task.Run(async () =>
+            {
+                try   { await _repo.SetLogonAsync(sessionKey, logonUtc); }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "[Heartbeat] Failed to write the logon time of session {Session} (logon_utc: run 20261026_session_logon.sql)", sessionKey);
+                }
+            });
+
             lock (_lock)
             {
                 if (_sessions.ContainsKey(sessionKey))
@@ -48,6 +63,13 @@ namespace FxFixGateway.Application.BackgroundServices
             }
 
             _logger.LogInformation("[Heartbeat] Session {Session} ONLINE — heartbeat started", sessionKey);
+        }
+
+        /// <inheritdoc/>
+        public DateTime? LastLogonUtc(string sessionKey)
+        {
+            lock (_lock)
+                return _logons.TryGetValue(sessionKey, out var utc) ? utc : null;
         }
 
         /// <summary>

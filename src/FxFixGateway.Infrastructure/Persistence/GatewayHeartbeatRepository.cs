@@ -53,15 +53,30 @@ namespace FxFixGateway.Infrastructure.Persistence
             await cmd.ExecuteNonQueryAsync();
         }
 
-        public async Task SetOfflineAsync(string sessionKey)
-        {
-            const string sql = @"
+        public Task SetOfflineAsync(string sessionKey)
+            => ExecuteCriticalAsync(@"
                 INSERT INTO fxvol.session_heartbeat (session_key, status, beat_utc)
                 VALUES (@SessionKey, 'OFFLINE', UTC_TIMESTAMP(3))
                 ON DUPLICATE KEY UPDATE
                     status   = 'OFFLINE',
-                    beat_utc = VALUES(beat_utc);";
+                    beat_utc = VALUES(beat_utc);", sessionKey, null);
 
+        /// <summary>
+        /// The session's logon time (logon_utc, script 20261026_session_logon.sql in OptionSuite.V2), on this gateway's clock as
+        /// quote_requests.received_utc: the pricer stops Send on a Volbroker request from before it (Volbroker keeps no RFQs over a
+        /// logout). Written as SetOfflineAsync, so a logon is not lost to a busy pool.
+        /// </summary>
+        public Task SetLogonAsync(string sessionKey, DateTime logonUtc)
+            => ExecuteCriticalAsync(@"
+                INSERT INTO fxvol.session_heartbeat (session_key, status, beat_utc, logon_utc)
+                VALUES (@SessionKey, 'ONLINE', UTC_TIMESTAMP(3), @LogonUtc)
+                ON DUPLICATE KEY UPDATE
+                    status    = 'ONLINE',
+                    beat_utc  = VALUES(beat_utc),
+                    logon_utc = VALUES(logon_utc);", sessionKey, logonUtc);
+
+        private async Task ExecuteCriticalAsync(string sql, string sessionKey, DateTime? logonUtc)
+        {
             // Non-pooled + selective retry with exponential back-off.
             // Ensures OFFLINE is written even during pool pressure at shutdown.
             // Retries ONLY on transient failures (network, overload).
@@ -74,6 +89,7 @@ namespace FxFixGateway.Infrastructure.Persistence
                     await connection.OpenAsync();
                     await using var cmd = new MySqlCommand(sql, connection);
                     cmd.Parameters.AddWithValue("@SessionKey", sessionKey);
+                    if (logonUtc.HasValue) cmd.Parameters.AddWithValue("@LogonUtc", logonUtc.Value);
                     await cmd.ExecuteNonQueryAsync();
                     return; // success
                 }

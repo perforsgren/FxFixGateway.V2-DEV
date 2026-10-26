@@ -14,7 +14,9 @@ namespace FxFixGateway.Application.BackgroundServices
     /// and Business Message Rejects (35=j) are applied as they come. Each message is written to volbroker_rfq_event.
     /// Only on <see cref="Sessions"/>: a version queued on another session is rejected, not sent.
     /// Volbroker clears its requests at 17:00 New York (<see cref="VolbrokerDay"/>): from then a live version on the request is
-    /// EXPIRED, and no Quote or Quote Cancel is sent on it.
+    /// EXPIRED, and no Quote or Quote Cancel is sent on it. The same when Volbroker dropped the request because we logged out
+    /// (it keeps no RFQs over a logout, <see cref="VolbrokerReconnect"/>): a request received before its session's latest logon.
+    /// The request itself is left as it is (the pricer shows it, with Send off).
     /// </summary>
     public sealed class VolbrokerQuoteService : BackgroundService, IVolbrokerQuoteService
     {
@@ -33,12 +35,23 @@ namespace FxFixGateway.Application.BackgroundServices
         private readonly IVolbrokerQuoteRepository _repository;
         private readonly IVolbrokerQuoteSender _sender;
         private readonly ILogger<VolbrokerQuoteService> _logger;
+        private readonly ISessionLogonTimes? _logons;
 
-        public VolbrokerQuoteService(IVolbrokerQuoteRepository repository, IVolbrokerQuoteSender sender, ILogger<VolbrokerQuoteService> logger)
+        /// <param name="logons">When each session last logged on (null: requests from before a logon are not checked).</param>
+        public VolbrokerQuoteService(IVolbrokerQuoteRepository repository, IVolbrokerQuoteSender sender, ILogger<VolbrokerQuoteService> logger,
+                                     ISessionLogonTimes? logons = null)
         {
             _repository = repository ?? throw new ArgumentNullException(nameof(repository));
             _sender     = sender     ?? throw new ArgumentNullException(nameof(sender));
             _logger     = logger     ?? throw new ArgumentNullException(nameof(logger));
+            _logons     = logons;
+        }
+
+        // The session's latest logon when the request (its latest arrival) came before it: Volbroker dropped it; else null.
+        private DateTime? DroppedAt(string sessionKey, DateTime lastReceivedUtc)
+        {
+            var logon = _logons?.LastLogonUtc(sessionKey);
+            return VolbrokerReconnect.IsDropped(lastReceivedUtc, logon) ? logon : null;
         }
 
         public bool HandlesSession(string sessionKey) => Sessions.Contains(sessionKey);
@@ -65,7 +78,10 @@ namespace FxFixGateway.Application.BackgroundServices
             _logger.LogInformation("Volbroker quote service stopped");
         }
 
-        /// <summary>One round: expire, end what Volbroker cleared at 17:00 New York, reject orphans, send the queued, send the cancels.</summary>
+        /// <summary>
+        /// One round: expire, end what Volbroker cleared at 17:00 New York or dropped at our logon, reject orphans, send the queued,
+        /// send the cancels.
+        /// </summary>
         public async Task RunOnceAsync()
         {
             var now = DateTime.UtcNow;
@@ -90,9 +106,25 @@ namespace FxFixGateway.Application.BackgroundServices
         {
             foreach (var live in await _repository.GetLiveVersionsAsync())
             {
-                if (!VolbrokerDay.IsCleared(live.RequestUtc, nowUtc)) continue;
-                await ClearAsync(live.PriceId, live.Version, live.Status, live.SessionKey, live.QuoteReqId, live.RequestUtc, nowUtc);
+                if (VolbrokerDay.IsCleared(live.RequestUtc, nowUtc))
+                    await ClearAsync(live.PriceId, live.Version, live.Status, live.SessionKey, live.QuoteReqId, live.RequestUtc, nowUtc);
+                else if (DroppedAt(live.SessionKey, live.LastReceivedUtc) is DateTime logon)
+                    await DropAsync(live.PriceId, live.Version, live.Status, live.SessionKey, live.QuoteReqId, live.LastReceivedUtc, logon, nowUtc);
             }
+        }
+
+        /// <summary>
+        /// One version over because Volbroker dropped its request when we logged out (received before the session's latest logon):
+        /// EXPIRED, a DROPPED event and a log line (when it changed). Nothing is sent on such a request.
+        /// </summary>
+        private async Task DropAsync(long priceId, int version, string status, string sessionKey, string quoteReqId, DateTime lastReceivedUtc,
+                                     DateTime logonUtc, DateTime nowUtc)
+        {
+            var reason = (status == "QUEUED" || status == "SENDING" ? "not sent: " : "") + VolbrokerReconnect.Reason(logonUtc);
+            if (!await _repository.MarkClearedAsync(priceId, reason, nowUtc)) return;
+            await TryEventAsync(sessionKey, quoteReqId, "-", "DROPPED",
+                $"v{version} was {status} · {reason} (request received {lastReceivedUtc:yyyy-MM-dd HH:mm:ss.fff}Z, logon {logonUtc:yyyy-MM-dd HH:mm:ss.fff}Z)", string.Empty);
+            _logger.LogInformation("[{Session}] Volbroker {QuoteReqId} v{Version} ({Status}) expired: {Reason}", sessionKey, quoteReqId, version, status, reason);
         }
 
         /// <summary>One version over because Volbroker cleared its request: EXPIRED, an event and a log line (when it changed).</summary>
@@ -112,6 +144,12 @@ namespace FxFixGateway.Application.BackgroundServices
             if (VolbrokerDay.IsCleared(price.RequestUtc, DateTime.UtcNow))
             {
                 await ClearAsync(price.PriceId, price.Version, "QUEUED", price.SessionKey, price.QuoteReqId, price.RequestUtc, DateTime.UtcNow);
+                return;
+            }
+            // Received before our latest logon: Volbroker dropped the request, so nothing is sent (it would be refused).
+            if (DroppedAt(price.SessionKey, price.LastReceivedUtc) is DateTime dropped)
+            {
+                await DropAsync(price.PriceId, price.Version, "QUEUED", price.SessionKey, price.QuoteReqId, price.LastReceivedUtc, dropped, DateTime.UtcNow);
                 return;
             }
             if (!HandlesSession(price.SessionKey))
@@ -162,6 +200,12 @@ namespace FxFixGateway.Application.BackgroundServices
             if (VolbrokerDay.IsCleared(cancel.RequestUtc, DateTime.UtcNow))
             {
                 await ClearAsync(cancel.PriceId, cancel.Version, "WITHDRAW", cancel.SessionKey, cancel.QuoteReqId, cancel.RequestUtc, DateTime.UtcNow);
+                return;
+            }
+            // Dropped at our logon: our price went with the request, so no Quote Cancel goes out.
+            if (DroppedAt(cancel.SessionKey, cancel.LastReceivedUtc) is DateTime dropped)
+            {
+                await DropAsync(cancel.PriceId, cancel.Version, "WITHDRAW", cancel.SessionKey, cancel.QuoteReqId, cancel.LastReceivedUtc, dropped, DateTime.UtcNow);
                 return;
             }
             if (!HandlesSession(cancel.SessionKey) || !_sender.IsLoggedOn(cancel.SessionKey)) return;

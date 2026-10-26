@@ -47,7 +47,9 @@ namespace FxFixGateway.Infrastructure.Persistence
         {
             const string priceSql = @"
                 SELECT p.id, p.rfq_id, p.version, p.trader, p.trader_name, p.valid_until_utc, p.spot_low, p.spot_high, p.size_millions,
-                       q.session_key, q.quote_req_id, q.security_id, q.received_utc, q.raw_payload
+                       q.session_key, q.quote_req_id, q.security_id, q.received_utc, q.raw_payload,
+                       (SELECT MAX(x.received_utc) FROM fxvol.quote_requests x
+                        WHERE x.id >= q.id AND x.session_key = q.session_key AND x.quote_req_id = q.quote_req_id) AS last_received_utc
                 FROM fxvol.volbroker_rfq_price p
                 INNER JOIN fxvol.quote_requests q ON q.id = p.rfq_id
                 WHERE p.status = 'QUEUED' AND (p.valid_until_utc IS NULL OR p.valid_until_utc > @Now)
@@ -87,6 +89,7 @@ namespace FxFixGateway.Infrastructure.Persistence
                         QuoteReqId = r.GetString(r.GetOrdinal("quote_req_id")),
                         SecurityId = Str(r, "security_id"),
                         RequestUtc = RequestUtc(r),
+                        LastReceivedUtc = LastReceivedUtc(r),
                         Legs = legs,
                     };
                     prices.Add(price);
@@ -155,7 +158,9 @@ namespace FxFixGateway.Infrastructure.Persistence
         public async Task<IReadOnlyList<VolbrokerPriceToCancel>> GetWithdrawRequestsAsync()
         {
             const string sql = @"
-                SELECT p.id, p.version, p.quote_id, p.trader, p.withdraw_reason, q.session_key, q.quote_req_id, q.received_utc, q.raw_payload
+                SELECT p.id, p.version, p.quote_id, p.trader, p.withdraw_reason, q.session_key, q.quote_req_id, q.received_utc, q.raw_payload,
+                       (SELECT MAX(x.received_utc) FROM fxvol.quote_requests x
+                        WHERE x.id >= q.id AND x.session_key = q.session_key AND x.quote_req_id = q.quote_req_id) AS last_received_utc
                 FROM fxvol.volbroker_rfq_price p
                 INNER JOIN fxvol.quote_requests q ON q.id = p.rfq_id
                 WHERE p.status = 'WITHDRAW' AND p.cancel_sent_utc IS NULL AND p.quote_id IS NOT NULL
@@ -176,6 +181,7 @@ namespace FxFixGateway.Infrastructure.Persistence
                     SessionKey = r.GetString(r.GetOrdinal("session_key")),
                     QuoteReqId = r.GetString(r.GetOrdinal("quote_req_id")),
                     RequestUtc = RequestUtc(r),
+                    LastReceivedUtc = LastReceivedUtc(r),
                 });
             return list;
         }
@@ -183,7 +189,9 @@ namespace FxFixGateway.Infrastructure.Persistence
         public async Task<IReadOnlyList<VolbrokerLiveVersion>> GetLiveVersionsAsync()
         {
             const string sql = @"
-                SELECT p.id, p.version, p.status, q.session_key, q.quote_req_id, q.received_utc, q.raw_payload
+                SELECT p.id, p.version, p.status, q.session_key, q.quote_req_id, q.received_utc, q.raw_payload,
+                       (SELECT MAX(x.received_utc) FROM fxvol.quote_requests x
+                        WHERE x.id >= q.id AND x.session_key = q.session_key AND x.quote_req_id = q.quote_req_id) AS last_received_utc
                 FROM fxvol.volbroker_rfq_price p
                 INNER JOIN fxvol.quote_requests q ON q.id = p.rfq_id
                 WHERE p.status IN ('QUEUED', 'SENDING', 'SENT', 'ACCEPTED', 'WITHDRAW')
@@ -202,12 +210,13 @@ namespace FxFixGateway.Infrastructure.Persistence
                     SessionKey = r.GetString(r.GetOrdinal("session_key")),
                     QuoteReqId = r.GetString(r.GetOrdinal("quote_req_id")),
                     RequestUtc = RequestUtc(r),
+                    LastReceivedUtc = LastReceivedUtc(r),
                 });
             return list;
         }
 
-        // Volbroker cleared the request at 17:00 New York: the version is over, whatever it was waiting for (no Quote or Quote
-        // Cancel goes out on a request Volbroker no longer has).
+        // Volbroker no longer has the request (cleared at 17:00 New York, or dropped when we logged on again): the version is over,
+        // whatever it was waiting for (no Quote or Quote Cancel goes out on a request Volbroker no longer has).
         public async Task<bool> MarkClearedAsync(long priceId, string reason, DateTime nowUtc)
         {
             await using var connection = new MySqlConnection(_connectionString);
@@ -221,6 +230,10 @@ namespace FxFixGateway.Infrastructure.Persistence
             cmd.Parameters.AddWithValue("@Now", nowUtc);
             return await cmd.ExecuteNonQueryAsync() == 1;
         }
+
+        // The request's latest arrival: the newest row with its QuoteReqID on its session (a request resent with the same id).
+        private static DateTime LastReceivedUtc(System.Data.Common.DbDataReader r)
+            => r.GetDateTime(r.GetOrdinal("last_received_utc"));
 
         // The request's time from its first leg's row: its SendingTime (52), else when the gateway stored it.
         private static DateTime RequestUtc(System.Data.Common.DbDataReader r)

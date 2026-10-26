@@ -49,8 +49,8 @@ namespace FxFixGateway.Domain.Interfaces
         Task<IReadOnlyList<VolbrokerLiveVersion>> GetLiveVersionsAsync();
 
         /// <summary>
-        /// Volbroker cleared the version's request (17:00 New York): EXPIRED with <paramref name="reason"/>, when it is still
-        /// live. True when it changed.
+        /// Volbroker no longer has the version's request (cleared at 17:00 New York, or dropped when we logged on again): EXPIRED
+        /// with <paramref name="reason"/>, when it is still live. True when it changed.
         /// </summary>
         Task<bool> MarkClearedAsync(long priceId, string reason, DateTime nowUtc);
 

@@ -20,6 +20,7 @@ namespace FxFixGateway.Domain.ValueObjects
         public string QuoteReqId { get; init; } = string.Empty; // 131
         public string? SecurityId { get; init; }                // 48
         public DateTime RequestUtc { get; init; }               // the request's time (VolbrokerDay.RequestUtc): Volbroker clears it at 17:00 New York
+        public DateTime LastReceivedUtc { get; init; }          // its latest arrival (received_utc): gone at Volbroker if before our logon (VolbrokerReconnect)
 
         public IReadOnlyList<VolbrokerPriceLegToSend> Legs { get; init; } = Array.Empty<VolbrokerPriceLegToSend>();
     }
@@ -47,6 +48,7 @@ namespace FxFixGateway.Domain.ValueObjects
         public string Trader { get; init; } = string.Empty;
         public string? Reason { get; init; }
         public DateTime RequestUtc { get; init; }   // the request's time (VolbrokerDay.RequestUtc): no cancel after Volbroker cleared it
+        public DateTime LastReceivedUtc { get; init; }   // its latest arrival: no cancel on a request Volbroker dropped at our logon
     }
 
     /// <summary>A version still live (queued, being sent, sent, accepted, being withdrawn), with its request's time.</summary>
@@ -58,6 +60,7 @@ namespace FxFixGateway.Domain.ValueObjects
         public string SessionKey { get; init; } = string.Empty;
         public string QuoteReqId { get; init; } = string.Empty;
         public DateTime RequestUtc { get; init; }
+        public DateTime LastReceivedUtc { get; init; }
     }
 
     /// <summary>A Quote Response (35=AJ): Volbroker's answer to our Quote, or news of our price (removed, hit).</summary>

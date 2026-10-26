@@ -333,6 +333,9 @@ namespace FxFixGateway.UI
             services.AddHostedService(sp => sp.GetRequiredService<GatewayHeartbeatService>());
             services.AddSingleton<ISessionHeartbeatNotifier>(sp =>
                 sp.GetRequiredService<GatewayHeartbeatService>());
+            // When each session last logged on (the Volbroker quote service sends nothing on a request from before it).
+            services.AddSingleton<ISessionLogonTimes>(sp =>
+                sp.GetRequiredService<GatewayHeartbeatService>());
 
 
             // PostMarker (FXO Hub): receives deals and sends Accept — replaces PostMarkerStudio.
@@ -441,7 +444,8 @@ namespace FxFixGateway.UI
                 new VolbrokerQuoteService(
                     sp.GetRequiredService<IVolbrokerQuoteRepository>(),
                     sp.GetRequiredService<IVolbrokerQuoteSender>(),
-                    sp.GetRequiredService<ILogger<VolbrokerQuoteService>>()));
+                    sp.GetRequiredService<ILogger<VolbrokerQuoteService>>(),
+                    sp.GetRequiredService<ISessionLogonTimes>()));
             services.AddSingleton<IVolbrokerQuoteService>(sp => sp.GetRequiredService<VolbrokerQuoteService>());
             services.AddHostedService(sp => sp.GetRequiredService<VolbrokerQuoteService>());
 
