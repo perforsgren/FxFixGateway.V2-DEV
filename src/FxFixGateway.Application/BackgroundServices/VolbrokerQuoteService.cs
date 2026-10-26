@@ -13,6 +13,8 @@ namespace FxFixGateway.Application.BackgroundServices
     /// SENT); versions to withdraw → a Quote Cancel (35=Z). Volbroker's Quote Responses (35=AJ), Quote Status Reports (35=AI)
     /// and Business Message Rejects (35=j) are applied as they come. Each message is written to volbroker_rfq_event.
     /// Only on <see cref="Sessions"/>: a version queued on another session is rejected, not sent.
+    /// Volbroker clears its requests at 17:00 New York (<see cref="VolbrokerDay"/>): from then a live version on the request is
+    /// EXPIRED, and no Quote or Quote Cancel is sent on it.
     /// </summary>
     public sealed class VolbrokerQuoteService : BackgroundService, IVolbrokerQuoteService
     {
@@ -63,12 +65,13 @@ namespace FxFixGateway.Application.BackgroundServices
             _logger.LogInformation("Volbroker quote service stopped");
         }
 
-        /// <summary>One round: expire, reject orphans, send the queued, send the cancels.</summary>
+        /// <summary>One round: expire, end what Volbroker cleared at 17:00 New York, reject orphans, send the queued, send the cancels.</summary>
         public async Task RunOnceAsync()
         {
             var now = DateTime.UtcNow;
             var expired = await _repository.ExpireAsync(now);
             if (expired > 0) _logger.LogInformation("Volbroker quotes: {Count} version(s) past their time stipulation (expired, or cancelled at Volbroker)", expired);
+            await ClearEndedDayAsync(now);
             var orphaned = await _repository.RejectOrphanedAsync(now);
             if (orphaned > 0) _logger.LogWarning("Volbroker quotes: {Count} queued version(s) not sent: the request is no longer the trader's", orphaned);
 
@@ -79,8 +82,38 @@ namespace FxFixGateway.Application.BackgroundServices
                 await CancelAsync(cancel);
         }
 
+        /// <summary>
+        /// Every live version whose request Volbroker has cleared (17:00 New York on the request's day): EXPIRED, with an event.
+        /// Nothing is sent on such a request (Volbroker no longer has it).
+        /// </summary>
+        private async Task ClearEndedDayAsync(DateTime nowUtc)
+        {
+            foreach (var live in await _repository.GetLiveVersionsAsync())
+            {
+                if (!VolbrokerDay.IsCleared(live.RequestUtc, nowUtc)) continue;
+                await ClearAsync(live.PriceId, live.Version, live.Status, live.SessionKey, live.QuoteReqId, live.RequestUtc, nowUtc);
+            }
+        }
+
+        /// <summary>One version over because Volbroker cleared its request: EXPIRED, an event and a log line (when it changed).</summary>
+        private async Task ClearAsync(long priceId, int version, string status, string sessionKey, string quoteReqId, DateTime requestUtc, DateTime nowUtc)
+        {
+            var reason = status == "QUEUED" || status == "SENDING" ? "not sent: " + VolbrokerDay.ClearedReason : VolbrokerDay.ClearedReason;
+            if (!await _repository.MarkClearedAsync(priceId, reason, nowUtc)) return;
+            var end = VolbrokerDay.EndUtc(requestUtc);
+            await TryEventAsync(sessionKey, quoteReqId, "-", "CLEARED",
+                $"v{version} was {status} · {reason} ({end:yyyy-MM-dd HH:mm}Z; request {requestUtc:yyyy-MM-dd HH:mm:ss}Z)", string.Empty);
+            _logger.LogInformation("[{Session}] Volbroker {QuoteReqId} v{Version} ({Status}) expired: {Reason}", sessionKey, quoteReqId, version, status, reason);
+        }
+
         private async Task SendAsync(VolbrokerPriceToSend price)
         {
+            // Queued just before Volbroker's day ended: the request is gone there, so nothing is sent.
+            if (VolbrokerDay.IsCleared(price.RequestUtc, DateTime.UtcNow))
+            {
+                await ClearAsync(price.PriceId, price.Version, "QUEUED", price.SessionKey, price.QuoteReqId, price.RequestUtc, DateTime.UtcNow);
+                return;
+            }
             if (!HandlesSession(price.SessionKey))
             {
                 await _repository.MarkRejectedAsync(price.PriceId, $"not sent: Volbroker quotes are not enabled on {price.SessionKey}", DateTime.UtcNow);
@@ -125,6 +158,12 @@ namespace FxFixGateway.Application.BackgroundServices
 
         private async Task CancelAsync(VolbrokerPriceToCancel cancel)
         {
+            // Volbroker's day ended: the request and our price are gone there, so no Quote Cancel goes out.
+            if (VolbrokerDay.IsCleared(cancel.RequestUtc, DateTime.UtcNow))
+            {
+                await ClearAsync(cancel.PriceId, cancel.Version, "WITHDRAW", cancel.SessionKey, cancel.QuoteReqId, cancel.RequestUtc, DateTime.UtcNow);
+                return;
+            }
             if (!HandlesSession(cancel.SessionKey) || !_sender.IsLoggedOn(cancel.SessionKey)) return;
             string raw;
             try

@@ -45,6 +45,15 @@ namespace FxFixGateway.Domain.Interfaces
         /// <summary>Queued versions on a request no longer the trader's (released, passed): REJECTED. Returns how many.</summary>
         Task<int> RejectOrphanedAsync(DateTime nowUtc);
 
+        /// <summary>Every live version (QUEUED, SENDING, SENT, ACCEPTED, WITHDRAW) with its request's time (VolbrokerDay).</summary>
+        Task<IReadOnlyList<VolbrokerLiveVersion>> GetLiveVersionsAsync();
+
+        /// <summary>
+        /// Volbroker cleared the version's request (17:00 New York): EXPIRED with <paramref name="reason"/>, when it is still
+        /// live. True when it changed.
+        /// </summary>
+        Task<bool> MarkClearedAsync(long priceId, string reason, DateTime nowUtc);
+
         /// <summary>Queued versions still valid, oldest first, with the request's fields and the legs.</summary>
         Task<IReadOnlyList<VolbrokerPriceToSend>> GetQueuedAsync(DateTime nowUtc);
 

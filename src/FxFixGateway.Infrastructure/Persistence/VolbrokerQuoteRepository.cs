@@ -47,7 +47,7 @@ namespace FxFixGateway.Infrastructure.Persistence
         {
             const string priceSql = @"
                 SELECT p.id, p.rfq_id, p.version, p.trader, p.trader_name, p.valid_until_utc, p.spot_low, p.spot_high, p.size_millions,
-                       q.session_key, q.quote_req_id, q.security_id
+                       q.session_key, q.quote_req_id, q.security_id, q.received_utc, q.raw_payload
                 FROM fxvol.volbroker_rfq_price p
                 INNER JOIN fxvol.quote_requests q ON q.id = p.rfq_id
                 WHERE p.status = 'QUEUED' AND (p.valid_until_utc IS NULL OR p.valid_until_utc > @Now)
@@ -86,6 +86,7 @@ namespace FxFixGateway.Infrastructure.Persistence
                         SessionKey = r.GetString(r.GetOrdinal("session_key")),
                         QuoteReqId = r.GetString(r.GetOrdinal("quote_req_id")),
                         SecurityId = Str(r, "security_id"),
+                        RequestUtc = RequestUtc(r),
                         Legs = legs,
                     };
                     prices.Add(price);
@@ -154,7 +155,7 @@ namespace FxFixGateway.Infrastructure.Persistence
         public async Task<IReadOnlyList<VolbrokerPriceToCancel>> GetWithdrawRequestsAsync()
         {
             const string sql = @"
-                SELECT p.id, p.version, p.quote_id, p.trader, p.withdraw_reason, q.session_key, q.quote_req_id
+                SELECT p.id, p.version, p.quote_id, p.trader, p.withdraw_reason, q.session_key, q.quote_req_id, q.received_utc, q.raw_payload
                 FROM fxvol.volbroker_rfq_price p
                 INNER JOIN fxvol.quote_requests q ON q.id = p.rfq_id
                 WHERE p.status = 'WITHDRAW' AND p.cancel_sent_utc IS NULL AND p.quote_id IS NOT NULL
@@ -174,9 +175,56 @@ namespace FxFixGateway.Infrastructure.Persistence
                     Reason = Str(r, "withdraw_reason"),
                     SessionKey = r.GetString(r.GetOrdinal("session_key")),
                     QuoteReqId = r.GetString(r.GetOrdinal("quote_req_id")),
+                    RequestUtc = RequestUtc(r),
                 });
             return list;
         }
+
+        public async Task<IReadOnlyList<VolbrokerLiveVersion>> GetLiveVersionsAsync()
+        {
+            const string sql = @"
+                SELECT p.id, p.version, p.status, q.session_key, q.quote_req_id, q.received_utc, q.raw_payload
+                FROM fxvol.volbroker_rfq_price p
+                INNER JOIN fxvol.quote_requests q ON q.id = p.rfq_id
+                WHERE p.status IN ('QUEUED', 'SENDING', 'SENT', 'ACCEPTED', 'WITHDRAW')
+                ORDER BY p.id;";
+            var list = new List<VolbrokerLiveVersion>();
+            await using var connection = new MySqlConnection(_connectionString);
+            await connection.OpenAsync();
+            await using var cmd = new MySqlCommand(sql, connection);
+            await using var r = await cmd.ExecuteReaderAsync();
+            while (await r.ReadAsync())
+                list.Add(new VolbrokerLiveVersion
+                {
+                    PriceId = r.GetInt64(r.GetOrdinal("id")),
+                    Version = r.GetInt32(r.GetOrdinal("version")),
+                    Status = r.GetString(r.GetOrdinal("status")),
+                    SessionKey = r.GetString(r.GetOrdinal("session_key")),
+                    QuoteReqId = r.GetString(r.GetOrdinal("quote_req_id")),
+                    RequestUtc = RequestUtc(r),
+                });
+            return list;
+        }
+
+        // Volbroker cleared the request at 17:00 New York: the version is over, whatever it was waiting for (no Quote or Quote
+        // Cancel goes out on a request Volbroker no longer has).
+        public async Task<bool> MarkClearedAsync(long priceId, string reason, DateTime nowUtc)
+        {
+            await using var connection = new MySqlConnection(_connectionString);
+            await connection.OpenAsync();
+            await using var cmd = new MySqlCommand(@"
+                UPDATE fxvol.volbroker_rfq_price
+                SET status = 'EXPIRED', status_reason = @Reason, status_utc = @Now, closed_utc = @Now
+                WHERE id = @Id AND status IN ('QUEUED', 'SENDING', 'SENT', 'ACCEPTED', 'WITHDRAW');", connection);
+            cmd.Parameters.AddWithValue("@Id", priceId);
+            cmd.Parameters.AddWithValue("@Reason", Trim(reason));
+            cmd.Parameters.AddWithValue("@Now", nowUtc);
+            return await cmd.ExecuteNonQueryAsync() == 1;
+        }
+
+        // The request's time from its first leg's row: its SendingTime (52), else when the gateway stored it.
+        private static DateTime RequestUtc(System.Data.Common.DbDataReader r)
+            => VolbrokerDay.RequestUtc(Str(r, "raw_payload"), r.GetDateTime(r.GetOrdinal("received_utc")));
 
         public Task MarkCancelSentAsync(long priceId, DateTime nowUtc)
             => ExecuteAsync("UPDATE fxvol.volbroker_rfq_price SET cancel_sent_utc = @Now WHERE id = @Id;", nowUtc, priceId);
