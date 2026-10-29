@@ -835,6 +835,9 @@ namespace FxFixGateway.Infrastructure.QuickFix
                 //"VOLB_STP_DEV" => "VOLBROKER",
                 "VOLB_STP_PROD" => "VOLBROKER",
                 "FENICS_STP_PROD" => "FENICS",
+                // GFI's UAT STP (trades done on FENICS UAT): parsed like production's to check the trades' details; OptionSuite's
+                // orchestrator never books them (MessageInParserOrchestrator.TestSessions).
+                "FENICS_STP_STAGE2" => "FENICS",
                 _ => sessionKey
             };
         }
