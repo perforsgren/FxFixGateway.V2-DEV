@@ -103,6 +103,11 @@ namespace FxFixGateway.Infrastructure.QuickFix
                 sb.AppendLine($"TargetCompID={config.TargetCompId}");
                 sb.AppendLine($"HeartBtInt={config.HeartBtIntSec}");
                 sb.AppendLine($"ReconnectInterval={config.ReconnectIntervalSeconds}");
+                // The session's own period (UTC): before, every session ran on the first session's StartTime/EndTime in
+                // [DEFAULT]. A session that keeps its sequence numbers resets them only when a new period starts, which must be
+                // the time agreed with the venue (Bloomberg: daily 05:00 UTC). StartTime = EndTime: no break, the period still turns then.
+                sb.AppendLine($"StartTime={config.StartTime:hh\\:mm\\:ss}");
+                sb.AppendLine($"EndTime={config.EndTime:hh\\:mm\\:ss}");
 
                 // A session that keeps its sequence numbers across logons (ResetSeqNumOnLogon = 0, e.g. Bloomberg): no reset on
                 // logon, logout or disconnect, so a gap is resent from the store. QuickFIX still resets at a new session period.
@@ -144,12 +149,24 @@ namespace FxFixGateway.Infrastructure.QuickFix
                     {
                         sb.AppendLine("SSLEnable=Y");
                         sb.AppendLine("SSLProtocols=Tls12");
-                        sb.AppendLine("SSLValidateCertificates=N");
+                        // The server's certificate checked only where the session asks for it (SslValidateCertificates).
+                        sb.AppendLine($"SSLValidateCertificates={(config.SslValidateCertificates ? "Y" : "N")}");
                         sb.AppendLine("SSLCheckCertificateRevocation=N");
 
                         if (!string.IsNullOrEmpty(config.SslServerName))
                         {
                             sb.AppendLine($"SSLServerName={config.SslServerName}");
+                        }
+                        // Our client certificate (mutual TLS, Bloomberg): a .pfx path or a subject in the Windows store.
+                        if (!string.IsNullOrEmpty(config.SslCertificate))
+                        {
+                            sb.AppendLine($"SSLCertificate={config.SslCertificate}");
+                            if (!string.IsNullOrEmpty(config.SslCertificatePassword))
+                                sb.AppendLine($"SSLCertificatePassword={config.SslCertificatePassword}");
+                        }
+                        if (!string.IsNullOrEmpty(config.SslCaCertificate))
+                        {
+                            sb.AppendLine($"SSLCACertificate={config.SslCaCertificate}");
                         }
                         sb.AppendLine();
                     }

@@ -365,3 +365,34 @@ läses med den). `TINYINT(1) NOT NULL DEFAULT 1`: 1 = sekvensnumren nollställs 
 (141=Y i vår Logon), som alla sessioner hittills; 0 = de behålls, så en lucka skickas om från filbutiken (QuickFIX
 nollställer ändå vid en ny sessionsperiod, StartTime). Sätts bara i databasen (`SessionRepository.SaveAsync` skriver den
 inte, som SSL-tunnelns kolumner).
+
+---
+
+## `fix_config_dev.fix_connection_config`: TLS-klientcertifikat, servercertifikat och sessionens period
+
+Skript: `docs/sql/20261029_fix_connection_tls_client_certificate.sql` (kör del 1 innan en gateway med kolumnerna startas:
+sessionerna läses med dem). Bakgrund: Bloombergs FIX Connectivity Policy kräver TLS 1.2 med ömsesidig autentisering
+(ett klientcertifikat per FIX-session från Enterprise Console, giltigt två år) och att sekvensnummer bara nollställs vid den
+överenskomna tiden.
+
+| Kolumn | Typ | Innehåll |
+|--------|-----|----------|
+| `SslCertificate` | `VARCHAR(500) NULL` | Vårt klientcertifikat: sökväg till .pfx/.p12, eller subject i Windows-lagret My (LocalMachine, sedan CurrentUser; `CN=…` läses som distinguished name). QuickFIX `SSLCertificate`. |
+| `SslCertificatePassword` | `VARCHAR(200) NULL` | Lösenordet till .pfx-filen; NULL för ett certifikat i lagret (`SSLCertificatePassword`). |
+| `SslValidateCertificates` | `TINYINT(1) NOT NULL DEFAULT 0` | 1 = serverns certifikat kontrolleras (namnet mot `SslServerName`, kedjan mot `SslCaCertificate` eller Windows betrodda rotcertifikat); 0 = vilket som helst godtas, som förut (`SSLValidateCertificates`). |
+| `SslCaCertificate` | `VARCHAR(500) NULL` | CA som serverns kedja ska sluta i (sökväg eller subject); NULL = Windows betrodda rotcertifikat (`SSLCACertificate`). |
+
+Sätts bara i databasen (`SessionRepository.SaveAsync` skriver dem inte). Vid start kontrolleras varje aktiv sessions
+klientcertifikat (`ClientCertificateCheck`): saknas det, går det inte att läsa, saknar privat nyckel, har gått ut eller inte
+börjat gälla blir det ett fel i loggen (QuickFIX/n skriver det annars bara till konsolen och kopplar upp utan certifikat);
+mindre än 30 dagar kvar blir en varning.
+
+`StartTime` / `EndTime` (UTC) gäller nu per session: de skrivs i sessionens `[SESSION]`. Förut gällde den första sessionens
+(i SessionKey-ordning) för alla. En session med `ResetSeqNumOnLogon = 0` nollställer sekvensnumren bara när en ny period
+börjar, alltså vid `EndTime`; `StartTime = EndTime` är dygnet runt men perioden byts ändå då.
+
+Bloombergs BETA-session (`BLOOMBERG_OPT_BETA`, del 2): internet, NY-adressen 69.191.198.32:8228, `SslServerName`
+fixbeta-ficc.bloomberg.com, SenderCompID SEKOUAT_OPT, TargetCompID BLPUAT_OPT, `ResetSeqNumOnLogon = 0`,
+`SslValidateCertificates = 1`, `FIX44_Bloomberg.xml`, period 05:01–04:59 UTC (utanför 04:59–05:01, så nollställningen sker
+med utloggning före och ny inloggning efter Bloombergs dagliga 05:00 UTC). Inaktiv tills certifikatet är installerat och
+vår IP (164.10.46.63) vitlistad; då del 3.

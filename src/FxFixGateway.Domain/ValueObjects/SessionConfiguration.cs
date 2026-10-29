@@ -60,6 +60,25 @@ namespace FxFixGateway.Domain.ValueObjects
         /// </summary>
         public bool ResetSeqNumOnLogon { get; }
 
+        /// <summary>
+        /// fix_connection_config.SslCertificate: our TLS client certificate, for a venue that authenticates the client too
+        /// (Bloomberg gives one per FIX session): a .pfx/.p12 path, or the subject of a certificate in the Windows store
+        /// (LocalMachine, then CurrentUser, "My"; "CN=…" is read as the distinguished name). Empty: none. Set in the database only.
+        /// </summary>
+        public string SslCertificate { get; }
+
+        /// <summary>fix_connection_config.SslCertificatePassword: the .pfx password; empty for a certificate in the store.</summary>
+        public string SslCertificatePassword { get; }
+
+        /// <summary>
+        /// fix_connection_config.SslValidateCertificates: true checks the server's certificate (its name against SslServerName,
+        /// its chain against SslCaCertificate or the Windows trust store); false (the default) accepts any, as before.
+        /// </summary>
+        public bool SslValidateCertificates { get; }
+
+        /// <summary>fix_connection_config.SslCaCertificate: the CA the server's chain must end in (path or store subject); empty: the Windows trust store.</summary>
+        public string SslCaCertificate { get; }
+
         public SessionConfiguration(
             int connectionId,
             string sessionKey,
@@ -93,7 +112,11 @@ namespace FxFixGateway.Domain.ValueObjects
             int? sslRemotePort = null,
             int? sslLocalPort = null,
             string sslSniHost = null,
-            bool resetSeqNumOnLogon = true)
+            bool resetSeqNumOnLogon = true,
+            string sslCertificate = null,
+            string sslCertificatePassword = null,
+            bool sslValidateCertificates = false,
+            string sslCaCertificate = null)
         {
             // Validation
             if (string.IsNullOrWhiteSpace(sessionKey))
@@ -141,6 +164,10 @@ namespace FxFixGateway.Domain.ValueObjects
             SslLocalPort = sslLocalPort;
             SslSniHost = sslSniHost ?? string.Empty;
             ResetSeqNumOnLogon = resetSeqNumOnLogon;
+            SslCertificate = sslCertificate ?? string.Empty;
+            SslCertificatePassword = sslCertificatePassword ?? string.Empty;
+            SslValidateCertificates = sslValidateCertificates;
+            SslCaCertificate = sslCaCertificate ?? string.Empty;
         }
 
         // With methods for creating modified copies
@@ -152,7 +179,8 @@ namespace FxFixGateway.Domain.ValueObjects
                 UseSsl, SslServerName, LogonUsername, Password, AckSupported, AckMode,
                 ReconnectIntervalSeconds, StartTime, EndTime, UseDataDictionary,
                 DataDictionaryFile, IsEnabled, CreatedUtc, DateTime.UtcNow, UpdatedBy, Notes,
-                resetSeqNumOnLogon: ResetSeqNumOnLogon);
+                UseSSLTunnel, SslRemoteHost, SslRemotePort, SslLocalPort, SslSniHost, ResetSeqNumOnLogon,
+                SslCertificate, SslCertificatePassword, SslValidateCertificates, SslCaCertificate);
         }
 
         public SessionConfiguration WithPort(int port)
@@ -163,7 +191,8 @@ namespace FxFixGateway.Domain.ValueObjects
                 UseSsl, SslServerName, LogonUsername, Password, AckSupported, AckMode,
                 ReconnectIntervalSeconds, StartTime, EndTime, UseDataDictionary,
                 DataDictionaryFile, IsEnabled, CreatedUtc, DateTime.UtcNow, UpdatedBy, Notes,
-                resetSeqNumOnLogon: ResetSeqNumOnLogon);
+                UseSSLTunnel, SslRemoteHost, SslRemotePort, SslLocalPort, SslSniHost, ResetSeqNumOnLogon,
+                SslCertificate, SslCertificatePassword, SslValidateCertificates, SslCaCertificate);
         }
 
         public SessionConfiguration WithEnabled(bool isEnabled)
@@ -174,7 +203,8 @@ namespace FxFixGateway.Domain.ValueObjects
                 UseSsl, SslServerName, LogonUsername, Password, AckSupported, AckMode,
                 ReconnectIntervalSeconds, StartTime, EndTime, UseDataDictionary,
                 DataDictionaryFile, isEnabled, CreatedUtc, DateTime.UtcNow, UpdatedBy, Notes,
-                resetSeqNumOnLogon: ResetSeqNumOnLogon);
+                UseSSLTunnel, SslRemoteHost, SslRemotePort, SslLocalPort, SslSniHost, ResetSeqNumOnLogon,
+                SslCertificate, SslCertificatePassword, SslValidateCertificates, SslCaCertificate);
         }
 
         public bool Equals(SessionConfiguration other)
@@ -212,7 +242,8 @@ namespace FxFixGateway.Domain.ValueObjects
                 UseSsl, SslServerName, LogonUsername, Password, AckSupported, AckMode,
                 ReconnectIntervalSeconds, StartTime, EndTime, UseDataDictionary,
                 DataDictionaryFile, IsEnabled, CreatedUtc, DateTime.UtcNow, UpdatedBy, Notes,
-                useSSLTunnel, sslRemoteHost, sslRemotePort, sslLocalPort, sslSniHost, ResetSeqNumOnLogon);
+                useSSLTunnel, sslRemoteHost, sslRemotePort, sslLocalPort, sslSniHost, ResetSeqNumOnLogon,
+                SslCertificate, SslCertificatePassword, SslValidateCertificates, SslCaCertificate);
         }
 
     }

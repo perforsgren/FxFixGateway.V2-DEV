@@ -222,6 +222,15 @@ namespace FxFixGateway.Infrastructure.QuickFix
                 _logger?.LogInformation("[{SessionKey}] Bloomberg FXGO session: its messages go to the Bloomberg RFQ service", key);
             foreach (var key in keepSeqNumSessionKeys)
                 _logger?.LogInformation("[{SessionKey}] Sequence numbers kept across logons (no reset, no 141=Y)", key);
+            // TLS client certificates (mutual TLS, Bloomberg): one that cannot be used is an error here, not a refused handshake.
+            foreach (var cfg in configList.Where(c => c.IsEnabled))
+            {
+                ClientCertificateCheck.Check(cfg, DateTime.UtcNow, out var certificateError, out var certificateWarning);
+                if (certificateError != null)
+                    _logger?.LogError("[{SessionKey}] TLS client certificate {Problem}: the venue will refuse the connection", cfg.SessionKey, certificateError);
+                else if (certificateWarning != null)
+                    _logger?.LogWarning("[{SessionKey}] TLS client certificate {Problem}", cfg.SessionKey, certificateWarning);
+            }
 
             // Skapa QuickFixSender och koppla till proxy nu när sessionIdMap finns
             if (_senderProxy != null)

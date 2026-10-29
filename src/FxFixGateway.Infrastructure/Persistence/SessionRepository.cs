@@ -54,7 +54,11 @@ namespace FxFixGateway.Infrastructure.Persistence
                     SslLocalPort,
                     SslSniHost,
                     UseSSLTunnel,
-                    ResetSeqNumOnLogon
+                    ResetSeqNumOnLogon,
+                    SslCertificate,
+                    SslCertificatePassword,
+                    SslValidateCertificates,
+                    SslCaCertificate
                 FROM fix_connection_config
                 ORDER BY SessionKey";
 
@@ -112,7 +116,11 @@ namespace FxFixGateway.Infrastructure.Persistence
                     SslLocalPort,
                     SslSniHost,
                     UseSSLTunnel,
-                    ResetSeqNumOnLogon
+                    ResetSeqNumOnLogon,
+                    SslCertificate,
+                    SslCertificatePassword,
+                    SslValidateCertificates,
+                    SslCaCertificate
                 FROM fix_connection_config
                 WHERE SessionKey = @SessionKey";
 
@@ -249,7 +257,13 @@ namespace FxFixGateway.Infrastructure.Persistence
                 sslLocalPort: reader.IsDBNull(reader.GetOrdinal("SslLocalPort")) ? null : reader.GetInt32(reader.GetOrdinal("SslLocalPort")),
                 sslSniHost: reader.IsDBNull(reader.GetOrdinal("SslSniHost")) ? null : reader.GetString(reader.GetOrdinal("SslSniHost")),
                 // Set in the database only (docs/sql/20261022_fix_connection_reset_seqnum.sql); SaveAsync does not write it.
-                resetSeqNumOnLogon: reader.GetBoolean(reader.GetOrdinal("ResetSeqNumOnLogon"))
+                resetSeqNumOnLogon: reader.GetBoolean(reader.GetOrdinal("ResetSeqNumOnLogon")),
+                // TLS client certificate and server validation: set in the database only
+                // (docs/sql/20261029_fix_connection_tls_client_certificate.sql); SaveAsync does not write them.
+                sslCertificate: reader.IsDBNull(reader.GetOrdinal("SslCertificate")) ? null : reader.GetString(reader.GetOrdinal("SslCertificate")),
+                sslCertificatePassword: reader.IsDBNull(reader.GetOrdinal("SslCertificatePassword")) ? null : reader.GetString(reader.GetOrdinal("SslCertificatePassword")),
+                sslValidateCertificates: reader.GetBoolean(reader.GetOrdinal("SslValidateCertificates")),
+                sslCaCertificate: reader.IsDBNull(reader.GetOrdinal("SslCaCertificate")) ? null : reader.GetString(reader.GetOrdinal("SslCaCertificate"))
             );
         }
 

@@ -50,6 +50,10 @@ namespace FxFixGateway.Application.Mappers
                 EndTime = config.EndTime,
                 ReconnectIntervalSeconds = config.ReconnectIntervalSeconds,  // ✅ FIX: (int)config.ReconnectInterval.TotalSeconds → config.ReconnectIntervalSeconds
                 ResetSeqNumOnLogon = config.ResetSeqNumOnLogon,
+                SslCertificate = config.SslCertificate,
+                SslCertificatePassword = config.SslCertificatePassword,
+                SslValidateCertificates = config.SslValidateCertificates,
+                SslCaCertificate = config.SslCaCertificate,
 
                 LogonUsername = config.LogonUsername,
                 Password = config.Password,
@@ -108,7 +112,11 @@ namespace FxFixGateway.Application.Mappers
                 updatedUtc: dto.UpdatedUtc,
                 updatedBy: dto.UpdatedBy,
                 notes: string.Empty,
-                resetSeqNumOnLogon: dto.ResetSeqNumOnLogon
+                resetSeqNumOnLogon: dto.ResetSeqNumOnLogon,
+                sslCertificate: dto.SslCertificate,
+                sslCertificatePassword: dto.SslCertificatePassword,
+                sslValidateCertificates: dto.SslValidateCertificates,
+                sslCaCertificate: dto.SslCaCertificate
             );
         }
 
