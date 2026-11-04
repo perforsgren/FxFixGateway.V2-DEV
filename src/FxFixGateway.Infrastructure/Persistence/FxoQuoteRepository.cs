@@ -255,6 +255,65 @@ namespace FxFixGateway.Infrastructure.Persistence
             return await FindAsync(quoteId);
         }
 
+        public async Task<FxoPriceRef?> ApplyCancelRejectAsync(string sessionKey, string? quoteId, bool alreadyOff, string reason, TimeSpan window, DateTime nowUtc)
+        {
+            // FXOhub's reject of a cancel names no quote (379 empty, no 45): the cancel that went out last on the session.
+            var id = !string.IsNullOrEmpty(quoteId) ? quoteId : await LastCancelledQuoteIdAsync(sessionKey, nowUtc - window);
+            if (id == null) return null;
+            var found = await FindAsync(id);
+            if (found == null) return null;
+            await using (var connection = new MySqlConnection(_connectionString))
+            {
+                await connection.OpenAsync();
+                await using var cmd = new MySqlCommand(alreadyOff ? AlreadyOffSql : CancelRefusedSql, connection);
+                cmd.Parameters.AddWithValue("@Id", found.PriceId);
+                cmd.Parameters.AddWithValue("@Reason", Trim(reason) ?? string.Empty);
+                cmd.Parameters.AddWithValue("@Now", nowUtc);
+                await cmd.ExecuteNonQueryAsync();
+            }
+            return await FindAsync(id);
+        }
+
+        // The QuoteID of the only version on the session still WITHDRAW whose cancel went out since sinceUtc; null for none or more than one.
+        private async Task<string?> LastCancelledQuoteIdAsync(string sessionKey, DateTime sinceUtc)
+        {
+            const string sql = @"
+                SELECT p.quote_id
+                FROM fxvol.fxohub_rfq_price p
+                INNER JOIN fxvol.fxohub_rfq r ON r.id = p.rfq_id
+                WHERE r.session_key = @Session AND p.status = 'WITHDRAW' AND p.quote_id IS NOT NULL
+                  AND p.cancel_sent_utc IS NOT NULL AND p.cancel_sent_utc >= @Since
+                ORDER BY p.cancel_sent_utc DESC
+                LIMIT 2;";
+            var ids = new List<string>();
+            await using var connection = new MySqlConnection(_connectionString);
+            await connection.OpenAsync();
+            await using var cmd = new MySqlCommand(sql, connection);
+            cmd.Parameters.AddWithValue("@Session", sessionKey);
+            cmd.Parameters.AddWithValue("@Since", sinceUtc);
+            await using var r = await cmd.ExecuteReaderAsync();
+            while (await r.ReadAsync()) ids.Add(r.GetString(0));
+            return ids.Count == 1 ? ids[0] : null;
+        }
+
+        // The quote is already off at FXOhub: so is ours. Withdrawn by the trader, or expired when it was the cancel at its time.
+        private const string AlreadyOffSql = @"
+            UPDATE fxvol.fxohub_rfq_price
+            SET status = IF(COALESCE(withdraw_reason, '') = '" + FxoPriceToCancel.TimeRanOut + @"', 'EXPIRED', 'WITHDRAWN'),
+                status_reason = @Reason, status_utc = @Now, closed_utc = @Now
+            WHERE id = @Id AND status IN ('SENDING', 'SENT', 'ACCEPTED', 'WITHDRAW');";
+
+        // The cancel was refused: the quote is still in FXOhub's market. A trader's withdraw goes back to ACCEPTED with the reason
+        // (it can be withdrawn again); the cancel at its time stays WITHDRAW with the reason, not sent again (it would repeat
+        // every round). MySQL assigns left to right: withdraw_reason is read before it is cleared.
+        private const string CancelRefusedSql = @"
+            UPDATE fxvol.fxohub_rfq_price
+            SET status_reason = LEFT(CONCAT(@Reason, ' · still on FXOhub'), 255), status_utc = @Now,
+                status = IF(COALESCE(withdraw_reason, '') = '" + FxoPriceToCancel.TimeRanOut + @"', 'WITHDRAW', 'ACCEPTED'),
+                cancel_sent_utc = IF(COALESCE(withdraw_reason, '') = '" + FxoPriceToCancel.TimeRanOut + @"', cancel_sent_utc, NULL),
+                withdraw_reason = IF(COALESCE(withdraw_reason, '') = '" + FxoPriceToCancel.TimeRanOut + @"', withdraw_reason, NULL)
+            WHERE id = @Id AND status = 'WITHDRAW';";
+
         private async Task<FxoPriceRef?> FindAsync(string quoteId)
         {
             const string sql = @"

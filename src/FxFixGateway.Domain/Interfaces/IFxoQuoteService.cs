@@ -66,5 +66,15 @@ namespace FxFixGateway.Domain.Interfaces
 
         /// <summary>A Business Message Reject of our Quote: the version with <paramref name="quoteId"/> → REJECTED. Null when unknown.</summary>
         Task<FxoPriceRef?> ApplyBusinessRejectAsync(string quoteId, string reason, DateTime nowUtc);
+
+        /// <summary>
+        /// A Business Message Reject of our Quote Cancel. The version is the one with <paramref name="quoteId"/> (379); when FXOhub
+        /// names none, the only one on <paramref name="sessionKey"/> still WITHDRAW whose cancel went out within
+        /// <paramref name="window"/> (none or more than one: null, nothing changed). <paramref name="alreadyOff"/> (the quote is
+        /// already cancelled at FXOhub): WITHDRAWN, or EXPIRED when it was the cancel at its time, with the reason. Otherwise the
+        /// cancel was refused and the quote is still in FXOhub's market: a trader's withdraw goes back to ACCEPTED with the
+        /// reason (it can be withdrawn again); the cancel at its time stays WITHDRAW with the reason (not sent again).
+        /// </summary>
+        Task<FxoPriceRef?> ApplyCancelRejectAsync(string sessionKey, string? quoteId, bool alreadyOff, string reason, TimeSpan window, DateTime nowUtc);
     }
 }

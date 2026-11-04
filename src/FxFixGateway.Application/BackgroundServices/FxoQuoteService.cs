@@ -146,11 +146,25 @@ namespace FxFixGateway.Application.BackgroundServices
             var now = DateTime.UtcNow;
             var reason = $"business reject of 35={dto.RefMsgType}" + (dto.Reason != null ? $" (reason {dto.Reason})" : "")
                        + (string.IsNullOrEmpty(dto.Text) ? "" : $": {dto.Text}");
-            var applied = dto.RefMsgType == "S" && !string.IsNullOrEmpty(dto.RefId)
-                ? await _repository.ApplyBusinessRejectAsync(dto.RefId, reason, now)
-                : null;
+            FxoPriceRef? applied = null;
+            string unmatched = "";
+            if (dto.RefMsgType == "S" && !string.IsNullOrEmpty(dto.RefId))
+                applied = await _repository.ApplyBusinessRejectAsync(dto.RefId, reason, now);
+            else if (dto.RefMsgType == "Z")
+            {
+                // Our Quote Cancel (UAT 4 Nov: "Quote already cancelled", 379 empty, no 45): by its QuoteID when given, else the
+                // cancel that went out last on the session. Already cancelled: the price is off. Anything else: still on FXOhub.
+                bool alreadyOff = FxoCancelReject.IsAlreadyOff(dto.Text);
+                var why = alreadyOff ? "FXOhub: " + dto.Text
+                                     : "cancel rejected by FXOhub" + (string.IsNullOrEmpty(dto.Text) ? "" : ": " + dto.Text);
+                applied = await _repository.ApplyCancelRejectAsync(sessionKey, dto.RefId, alreadyOff, why, FxoCancelReject.AnswerWindow, now);
+                if (applied == null)
+                    unmatched = string.IsNullOrEmpty(dto.RefId)
+                        ? $" · no price: not exactly one cancel in the last {FxoCancelReject.AnswerWindow.TotalSeconds:0} s"
+                        : " · no price with this QuoteID";
+            }
             await TryEventAsync(sessionKey, applied?.QuoteReqId, "j", "BUSINESS_REJECT",
-                                $"RefID={dto.RefId} · {reason}" + (applied != null ? $" · v{applied.Version} now {applied.Status}" : ""), dto.RawPayload);
+                                $"RefID={dto.RefId} · {reason}" + (applied != null ? $" · v{applied.Version} now {applied.Status}" : unmatched), dto.RawPayload);
             _logger.LogWarning("[{Session}] FXOhub {Reason} (RefID {RefId})", sessionKey, reason, dto.RefId);
         }
 

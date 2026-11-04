@@ -83,6 +83,20 @@ namespace FxFixGateway.Domain.ValueObjects
         public string RawPayload { get; init; } = string.Empty;
     }
 
+    /// <summary>
+    /// FXOhub's Business Message Reject of our Quote Cancel (35=j with 372=Z). UAT 4 Nov: "Quote already cancelled", 380=0,
+    /// an empty 379 and no 45, so nothing in it names the quote; it came 211 ms after our only cancel of that quote.
+    /// </summary>
+    public static class FxoCancelReject
+    {
+        /// <summary>How long after our Quote Cancel a reject that names no quote is taken as the answer to it.</summary>
+        public static readonly TimeSpan AnswerWindow = TimeSpan.FromSeconds(30);
+
+        /// <summary>The reject says the quote is already off at FXOhub ("Quote already cancelled"): our price is off too.</summary>
+        public static bool IsAlreadyOff(string? text)
+            => text != null && text.IndexOf("already cancel", StringComparison.OrdinalIgnoreCase) >= 0;
+    }
+
     /// <summary>The price version a Quote Status Report or reject was about, after it was applied.</summary>
     public sealed class FxoPriceRef
     {
