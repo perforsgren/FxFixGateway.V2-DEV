@@ -204,7 +204,7 @@
                             </DataGridTemplateColumn.CellTemplate>
                         </DataGridTemplateColumn>
 
-                        <DataGridTextColumn Header="TIME" Binding="{Binding TimeText}" Width="110">
+                        <DataGridTextColumn Header="TIME" Binding="{Binding TimeText}" Width="175">
                             <DataGridTextColumn.ElementStyle>
                                 <Style TargetType="TextBlock">
                                     <Setter Property="FontFamily" Value="{StaticResource Gw.Font.Mono}"/>

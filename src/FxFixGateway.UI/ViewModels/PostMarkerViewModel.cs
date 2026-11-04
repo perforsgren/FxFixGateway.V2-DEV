@@ -325,17 +325,8 @@ namespace FxFixGateway.UI.ViewModels
         public DateTime ReceivedUtc { get; }
         public string Xml { get; }
 
-        /// <summary>"09:23:14" today, "Fri 09:23" otherwise.</summary>
-        public string TimeText
-        {
-            get
-            {
-                var local = ReceivedUtc.ToLocalTime();
-                return local.Date == DateTime.Today
-                    ? local.ToString("HH:mm:ss", CultureInfo.InvariantCulture)
-                    : local.ToString("ddd HH:mm", CultureInfo.InvariantCulture);
-            }
-        }
+        /// <summary>The date and time it came, local: "2026-11-04 13:52:52" (4 Nov: "Thu 09:23" did not say which Thursday).</summary>
+        public string TimeText => ReceivedUtc.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture);
 
         public void MarkAccepted()
         {
