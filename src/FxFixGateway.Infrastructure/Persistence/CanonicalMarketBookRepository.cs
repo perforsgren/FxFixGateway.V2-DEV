@@ -27,66 +27,44 @@ namespace FxFixGateway.Infrastructure.Persistence
 
             try
             {
-                // Soft-delete allt per (venue, session, security); upserten återaktiverar
-                // de rader som faktiskt finns i snapshoten.
-                const string deactivate = @"
-                    UPDATE fxvol.canonical_market_book
-                    SET    is_active = 0
-                    WHERE  venue       = @Venue
-                      AND  session_key = @SessionKey
-                      AND  security_id = @SecurityId;";
-
-                foreach (var g in entries.GroupBy(e => (e.Venue, e.SessionKey, e.SecurityId)))
-                {
-                    await using var cmd = new MySqlCommand(deactivate, conn, tx);
-                    cmd.Parameters.AddWithValue("@Venue", g.Key.Venue);
-                    cmd.Parameters.AddWithValue("@SessionKey", g.Key.SessionKey);
-                    cmd.Parameters.AddWithValue("@SecurityId", g.Key.SecurityId);
-                    await cmd.ExecuteNonQueryAsync();
-                }
-
-                const string upsert = @"
-                    INSERT INTO fxvol.canonical_market_book
-                        (venue, session_key, security_id, currency_pair, tenor, cut, strategy, delta, product,
-                         md_entry_type, position_no, price, size, originator, trader_id, is_active, updated_utc)
-                    VALUES
-                        (@Venue, @SessionKey, @SecurityId, @CurrencyPair, @Tenor, @Cut, @Strategy, @Delta, @Product,
-                         @MdEntryType, @PositionNo, @Price, @Size, @Originator, @TraderId, 1, @UpdatedUtc)
-                    ON DUPLICATE KEY UPDATE
-                        is_active     = 1,
-                        currency_pair = VALUES(currency_pair),
-                        tenor         = VALUES(tenor),
-                        cut           = VALUES(cut),
-                        strategy      = VALUES(strategy),
-                        delta         = VALUES(delta),
-                        product       = VALUES(product),
-                        originator    = VALUES(originator),
-                        trader_id     = VALUES(trader_id),
-                        updated_utc   = IF(price <> VALUES(price) OR size <> VALUES(size),
-                                          VALUES(updated_utc), updated_utc),
-                        price         = VALUES(price),
-                        size          = VALUES(size);";
-
+                // A full book (35=W) for an instrument: upsert its rows, then pull the instrument's rows it no longer has
+                // (6 Nov 2026). Before, every row was first set inactive with no time and the upsert set the ones still
+                // there active again: a row whose price had not changed got the column's own time on that update
+                // (the database's local time, not UTC; Interbank Prices showed it an hour ahead) and a pulled row kept
+                // the time it was quoted. Now an unchanged row is not touched, a pulled row gets the pull time.
                 var now = DateTime.UtcNow;
                 foreach (var e in entries)
                 {
-                    await using var cmd = new MySqlCommand(upsert, conn, tx);
-                    cmd.Parameters.AddWithValue("@Venue", e.Venue);
-                    cmd.Parameters.AddWithValue("@SessionKey", e.SessionKey);
-                    cmd.Parameters.AddWithValue("@SecurityId", e.SecurityId);
-                    cmd.Parameters.AddWithValue("@CurrencyPair", e.CurrencyPair);
-                    cmd.Parameters.AddWithValue("@Tenor", e.Tenor);
-                    cmd.Parameters.AddWithValue("@Cut", e.Cut);
-                    cmd.Parameters.AddWithValue("@Strategy", e.Strategy);
-                    cmd.Parameters.AddWithValue("@Delta", (object?)e.Delta ?? DBNull.Value);
-                    cmd.Parameters.AddWithValue("@Product", (object?)e.Product ?? DBNull.Value);
-                    cmd.Parameters.AddWithValue("@MdEntryType", e.MdEntryType);
-                    cmd.Parameters.AddWithValue("@PositionNo", e.PositionNo);
-                    cmd.Parameters.AddWithValue("@Price", (object?)e.Price ?? DBNull.Value);
-                    cmd.Parameters.AddWithValue("@Size", (object?)e.Size ?? DBNull.Value);
-                    cmd.Parameters.AddWithValue("@Originator", (object?)e.Originator ?? DBNull.Value);
-                    cmd.Parameters.AddWithValue("@TraderId", (object?)e.TraderId ?? DBNull.Value);
-                    cmd.Parameters.AddWithValue("@UpdatedUtc", now);
+                    await using var cmd = new MySqlCommand(UpsertSql, conn, tx);
+                    AddEntryParameters(cmd, e, now);
+                    await cmd.ExecuteNonQueryAsync();
+                }
+
+                foreach (var g in entries.GroupBy(e => (e.Venue, e.SessionKey, e.SecurityId)))
+                {
+                    var kept = g.Select(e => (e.MdEntryType, e.PositionNo)).Distinct().ToList();
+                    var sb = new StringBuilder(@"
+                    UPDATE fxvol.canonical_market_book
+                    SET    is_active = 0, updated_utc = @Now
+                    WHERE  venue       = @Venue
+                      AND  session_key = @SessionKey
+                      AND  security_id = @SecurityId
+                      AND  is_active   = 1
+                      AND  (md_entry_type, position_no) NOT IN (");
+                    for (var i = 0; i < kept.Count; i++)
+                        sb.Append(i == 0 ? "" : ", ").Append("(@T").Append(i).Append(", @P").Append(i).Append(')');
+                    sb.Append(");");
+
+                    await using var cmd = new MySqlCommand(sb.ToString(), conn, tx);
+                    cmd.Parameters.AddWithValue("@Venue", g.Key.Venue);
+                    cmd.Parameters.AddWithValue("@SessionKey", g.Key.SessionKey);
+                    cmd.Parameters.AddWithValue("@SecurityId", g.Key.SecurityId);
+                    cmd.Parameters.AddWithValue("@Now", now);
+                    for (var i = 0; i < kept.Count; i++)
+                    {
+                        cmd.Parameters.AddWithValue("@T" + i, kept[i].MdEntryType);
+                        cmd.Parameters.AddWithValue("@P" + i, kept[i].PositionNo);
+                    }
                     await cmd.ExecuteNonQueryAsync();
                 }
 
@@ -181,7 +159,23 @@ namespace FxFixGateway.Infrastructure.Persistence
 
             // Ren upsert — ingen deactivate-all. Nyckel: (venue, session_key, security_id,
             // md_entry_type, position_no) där position_no = MDEntryID för TPICAP.
-            const string upsert = @"
+            var now = DateTime.UtcNow;
+            await using var conn = new MySqlConnection(_connectionString);
+            await conn.OpenAsync();
+
+            foreach (var e in entries)
+            {
+                await using var cmd = new MySqlCommand(UpsertSql, conn);
+                AddEntryParameters(cmd, e, now);
+                await cmd.ExecuteNonQueryAsync();
+            }
+        }
+
+        // One row of a book (6 Nov 2026). updated_utc is set first, before is_active: MySQL applies the assignments left to
+        // right, so the test still sees the row as it was. The time is the quote's: a new row, a changed price or size, or
+        // a pulled row quoted again; otherwise the row keeps its time. updated_utc is always assigned, so a column with
+        // ON UPDATE CURRENT_TIMESTAMP never stamps the row on its own (that time is the database's local time, not UTC).
+        private const string UpsertSql = @"
                 INSERT INTO fxvol.canonical_market_book
                     (venue, session_key, security_id, currency_pair, tenor, cut, strategy, delta, product,
                      md_entry_type, position_no, price, size, originator, trader_id, is_active, updated_utc)
@@ -189,6 +183,8 @@ namespace FxFixGateway.Infrastructure.Persistence
                     (@Venue, @SessionKey, @SecurityId, @CurrencyPair, @Tenor, @Cut, @Strategy, @Delta, @Product,
                      @MdEntryType, @PositionNo, @Price, @Size, @Originator, @TraderId, 1, @UpdatedUtc)
                 ON DUPLICATE KEY UPDATE
+                    updated_utc   = IF(is_active = 0 OR NOT (price <=> VALUES(price)) OR NOT (size <=> VALUES(size)),
+                                      VALUES(updated_utc), updated_utc),
                     is_active     = 1,
                     currency_pair = VALUES(currency_pair),
                     tenor         = VALUES(tenor),
@@ -198,36 +194,27 @@ namespace FxFixGateway.Infrastructure.Persistence
                     product       = VALUES(product),
                     originator    = VALUES(originator),
                     trader_id     = VALUES(trader_id),
-                    updated_utc   = IF(price <> VALUES(price) OR size <> VALUES(size),
-                                      VALUES(updated_utc), updated_utc),
                     price         = VALUES(price),
                     size          = VALUES(size);";
 
-            var now = DateTime.UtcNow;
-            await using var conn = new MySqlConnection(_connectionString);
-            await conn.OpenAsync();
-
-            foreach (var e in entries)
-            {
-                await using var cmd = new MySqlCommand(upsert, conn);
-                cmd.Parameters.AddWithValue("@Venue", e.Venue);
-                cmd.Parameters.AddWithValue("@SessionKey", e.SessionKey);
-                cmd.Parameters.AddWithValue("@SecurityId", e.SecurityId);
-                cmd.Parameters.AddWithValue("@CurrencyPair", e.CurrencyPair);
-                cmd.Parameters.AddWithValue("@Tenor", e.Tenor);
-                cmd.Parameters.AddWithValue("@Cut", e.Cut);
-                cmd.Parameters.AddWithValue("@Strategy", e.Strategy);
-                cmd.Parameters.AddWithValue("@Delta", (object?)e.Delta ?? DBNull.Value);
-                cmd.Parameters.AddWithValue("@Product", (object?)e.Product ?? DBNull.Value);
-                cmd.Parameters.AddWithValue("@MdEntryType", e.MdEntryType);
-                cmd.Parameters.AddWithValue("@PositionNo", e.PositionNo);
-                cmd.Parameters.AddWithValue("@Price", (object?)e.Price ?? DBNull.Value);
-                cmd.Parameters.AddWithValue("@Size", (object?)e.Size ?? DBNull.Value);
-                cmd.Parameters.AddWithValue("@Originator", (object?)e.Originator ?? DBNull.Value);
-                cmd.Parameters.AddWithValue("@TraderId", (object?)e.TraderId ?? DBNull.Value);
-                cmd.Parameters.AddWithValue("@UpdatedUtc", now);
-                await cmd.ExecuteNonQueryAsync();
-            }
+        private static void AddEntryParameters(MySqlCommand cmd, CanonicalBookEntry e, DateTime nowUtc)
+        {
+            cmd.Parameters.AddWithValue("@Venue", e.Venue);
+            cmd.Parameters.AddWithValue("@SessionKey", e.SessionKey);
+            cmd.Parameters.AddWithValue("@SecurityId", e.SecurityId);
+            cmd.Parameters.AddWithValue("@CurrencyPair", e.CurrencyPair);
+            cmd.Parameters.AddWithValue("@Tenor", e.Tenor);
+            cmd.Parameters.AddWithValue("@Cut", e.Cut);
+            cmd.Parameters.AddWithValue("@Strategy", e.Strategy);
+            cmd.Parameters.AddWithValue("@Delta", (object?)e.Delta ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("@Product", (object?)e.Product ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("@MdEntryType", e.MdEntryType);
+            cmd.Parameters.AddWithValue("@PositionNo", e.PositionNo);
+            cmd.Parameters.AddWithValue("@Price", (object?)e.Price ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("@Size", (object?)e.Size ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("@Originator", (object?)e.Originator ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("@TraderId", (object?)e.TraderId ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("@UpdatedUtc", nowUtc);
         }
 
         public async Task DeactivateEntryAsync(string venue, string sessionKey, string securityId,
