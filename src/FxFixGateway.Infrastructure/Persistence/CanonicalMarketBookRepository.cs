@@ -101,12 +101,16 @@ namespace FxFixGateway.Infrastructure.Persistence
 
         public async Task DeactivateEntriesAsync(string venue, string sessionKey, string securityId)
         {
+            // Only the rows pulled now get the pull time (is_active = 1). Rows pulled earlier keep their time: before,
+            // every pull of an instrument stamped all its rows, also ones pulled long ago (an own price from weeks back
+            // then looked like today's and won "last known" in Interbank Prices).
             const string sql = @"
                 UPDATE fxvol.canonical_market_book
                 SET    is_active = 0, updated_utc = @Now
                 WHERE  venue       = @Venue
                   AND  session_key = @SessionKey
-                  AND  security_id = @SecurityId;";
+                  AND  security_id = @SecurityId
+                  AND  is_active   = 1;";
 
             await using var conn = new MySqlConnection(_connectionString);
             await conn.OpenAsync();
@@ -229,6 +233,7 @@ namespace FxFixGateway.Infrastructure.Persistence
         public async Task DeactivateEntryAsync(string venue, string sessionKey, string securityId,
             string mdEntryType, int positionNo)
         {
+            // As DeactivateEntriesAsync: a row already pulled keeps its time.
             const string sql = @"
                 UPDATE fxvol.canonical_market_book
                 SET    is_active = 0, updated_utc = @Now
@@ -236,7 +241,8 @@ namespace FxFixGateway.Infrastructure.Persistence
                   AND  session_key   = @SessionKey
                   AND  security_id   = @SecurityId
                   AND  md_entry_type = @MdEntryType
-                  AND  position_no   = @PositionNo;";
+                  AND  position_no   = @PositionNo
+                  AND  is_active     = 1;";
 
             await using var conn = new MySqlConnection(_connectionString);
             await conn.OpenAsync();
